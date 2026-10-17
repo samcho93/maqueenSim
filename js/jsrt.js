@@ -80,6 +80,8 @@
     NeoPixelColors: { Red: 0xff0000, Orange: 0xffa500, Yellow: 0xffff00, Green: 0x00ff00, Blue: 0x0000ff, Indigo: 0x4b0082, Violet: 0x8a2be2, Purple: 0xff00ff, White: 0xffffff, Black: 0x000000 },
     PingUnit: { Centimeters: 0, MicroSeconds: 1, Inches: 2 },
     SerialPin: { P0: 0, P1: 1, P2: 2, USB_TX: 100, USB_RX: 101 },
+    NumberFormat: { Int8LE: 1, UInt8LE: 2, Int16LE: 3, UInt16LE: 4, Int32LE: 5, Int8BE: 6, UInt8BE: 7, Int16BE: 8, UInt16BE: 9, Int32BE: 10, UInt32LE: 11, UInt32BE: 12, Float32LE: 13, Float64LE: 14, Float32BE: 15, Float64BE: 16 },
+    PulseValue: { High: 1, Low: 0 },
     BaudRate: { BaudRate115200: 115200, BaudRate9600: 9600 },
   };
   for (let i = 0; i <= 20; i++) { E.DigitalPin['P' + i] = i; E.AnalogPin['P' + i] = i; }
@@ -193,7 +195,12 @@
     pulseIn: (p, v) => hw.pulseIn(p, v),
     i2cWriteNumber: (addr, n) => hw.i2cWrite(addr, [n & 0xff]),
     i2cWriteBuffer: (addr, buf) => hw.i2cWrite(addr, buf),
-    i2cReadNumber: (addr) => hw.i2cRead(addr, 1)[0],
+    i2cReadNumber: (addr, fmt) => {
+      const sz = [3, 4, 8, 9].includes(fmt) ? 2 : 1;
+      const b = hw.i2cRead(addr, sz);
+      const v = sz === 2 ? ([8, 9].includes(fmt) ? (b[0] << 8) | b[1] : (b[1] << 8) | b[0]) : b[0];
+      return [1, 6].includes(fmt) && v > 127 ? v - 256 : v;
+    },
     i2cReadBuffer: (addr, n) => hw.i2cRead(addr, n),
     createBuffer: (n) => new Array(n).fill(0),
     map: (v, fl, fh, tl, th) => ((v - fl) * (th - tl)) / (fh - fl) + tl,
@@ -243,7 +250,78 @@
     servoRun: (s, a) => hw.setServo(s, a),
     IR_read: () => hw.irCode,
     IR_callbackUser: (fn) => { ctx.handlers.ir = fn; },
-    IR_read_version: () => 'MAQUEEN_V4_SIM',
+    IR_readV2: () => hw.irCode,
+    IR_callbackUserV2: (fn) => { ctx.handlers.ir = fn; },
+    IR_read_version: () => readVersion(),
+    motorStopAll: () => hw.setMotor(2, 0, 0),
+    Patrol1: { PatrolLeft: 0x10, PatrolRight: 0x20 },
+    Voltage: { High: 0x01, Low: 0x00 },
+    // 라인 센서 상태 이벤트: key = Patrol1 + Voltage
+    ltEvent: (value, vi, fn) => { check(); ctx.handlers.lt.push({ key: value + vi, fn, busy: false }); startLtPoll(); },
+  };
+  function readVersion() {
+    hw.i2cWrite(0x10, [50]);
+    const len = hw.i2cRead(0x10, 1)[0];
+    hw.i2cWrite(0x10, [51]);
+    return String.fromCharCode(...hw.i2cRead(0x10, len));
+  }
+  function startLtPoll() {
+    const c = ctx;
+    if (c.ltPolling) return;
+    c.ltPolling = true;
+    (async () => {
+      let i = 1;
+      while (!c.stopped) {
+        // 원본 확장과 같은 방식: 50ms 마다 4가지 상태를 차례로 검사
+        let st = 0;
+        if (i === 1) st = hw.lineSensor(0) === 0 ? 0x10 : 0;
+        else if (i === 2) st = hw.lineSensor(0) === 1 ? 0x11 : 0;
+        else if (i === 3) st = hw.lineSensor(1) === 0 ? 0x20 : 0;
+        else st = hw.lineSensor(1) === 1 ? 0x21 : 0;
+        i = i === 4 ? 1 : i + 1;
+        if (st) c.handlers.lt.forEach((h) => {
+          if (h.key === st && !h.busy) { h.busy = true; Promise.resolve().then(() => h.fn()).catch((e) => c.onError(e)).finally(() => (h.busy = false)); }
+        });
+        await clock.sleep(50);
+      }
+    })().catch(() => {});
+  }
+
+  // ---------- Maqueen_V5 확장 (I2C 레지스터 방식) ----------
+  const I2C = 0x10;
+  const w2 = (reg, v) => hw.i2cWrite(I2C, [reg, v & 255]);
+  const rd = (reg, n) => { hw.i2cWrite(I2C, [reg]); return hw.i2cRead(I2C, n); };
+  const Maqueen_V5 = {
+    Motors: { M1: 0, M2: 1, All: 2 }, Servos: { S1: 0, S2: 1 }, Dir: { CW: 0, CCW: 1 },
+    Patrol: { L: 1, M: 2, R: 3 }, Patrolling: { ON: 1, OFF: 2 }, PatrolSpeed: { speed1: 1, speed2: 2, speed3: 3 },
+    SpeedGrade: { speed1: 1, speed2: 2, speed3: 3, speed4: 4, speed5: 5 }, Voltage: { High: 1, Low: 0 },
+    DirectionType: { Left: 0, Right: 1, All: 2 }, DirectionType2: { Left: 0, Right: 1 }, BatteryType: { Alkaline: 1, Lithium: 0 },
+    CarLightColors: { Red: 1, Green: 2, Yellow: 3, Blue: 4, Purple: 5, Cyan: 6, White: 7, Black: 8 },
+    NeoPixelColors: E.NeoPixelColors,
+    I2CInit: async () => { w2(0x46, 1); await pause(100); },
+    patrolling: (p) => w2(71, p === 1 ? 1 : 0),
+    motorRun: (m, dir, speed) => {
+      if (m === 0 || m === 2) hw.i2cWrite(I2C, [0, dir, speed]);
+      if (m === 1 || m === 2) hw.i2cWrite(I2C, [2, dir, speed]);
+    },
+    motorStop: (m) => Maqueen_V5.motorRun(m, 0, 0),
+    motorStopAll: () => Maqueen_V5.motorRun(2, 0, 0),
+    readVersion: () => readVersion(),
+    Ultrasonic: () => hw.ultrasonic(),
+    readPatrol: (p) => ((rd(29, 1)[0] & (1 << (3 - p))) ? 1 : 0),
+    readPatrolData: (p) => { const b = rd({ 1: 32, 2: 34, 3: 36 }[p] || 32, 2); return (b[0] << 8) | b[1]; },
+    servoRun: (s, a) => w2(s === 1 ? 21 : 20, a),
+    setRgblLed: (t, c) => { if (t !== 1) w2(11, c); if (t !== 0) w2(12, c); },
+    setRgbBlink: (t, n, g, c) => {
+      if (t !== 1) { w2(11, c); w2(14, g); w2(13, n); }
+      if (t !== 0) { w2(12, c); w2(16, g); w2(15, n); }
+    },
+    setRgbchange: (t, g) => { if (t !== 1) w2(17, g); if (t !== 0) w2(18, g); },
+    setRgbOff: (t) => Maqueen_V5.setRgblLed(t, 8),
+    readLightIntensity: (t) => { const b = rd(t === 0 ? 41 : 43, 2); return (b[0] << 8) | b[1]; },
+    getBatteryData: async (type = 1) => { w2(45, type); await pause(50); return Math.min(100, rd(46, 1)[0]); },
+    IR_read: () => hw.irCode, IR_readV2: () => hw.irCode,
+    IR_callbackUser: (fn) => { ctx.handlers.ir = fn; }, IR_callbackUserV2: (fn) => { ctx.handlers.ir = fn; },
   };
   // ---------- neopixel 확장 ----------
   class Strip {
@@ -283,7 +361,7 @@
 
   const consoleX = { log: (...a) => hw.serialWrite(a.join(' ') + '\n'), logValue: (n, v) => serial.writeValue(n, v) };
 
-  const API = Object.assign({ basic, input, led, music, pins, serial, control, maqueen, neopixel, randint, Math: MathX, console: consoleX, __y }, E);
+  const API = Object.assign({ basic, input, led, music, pins, serial, control, maqueen, Maqueen_V5, neopixel, randint, Math: MathX, console: consoleX, __y }, E);
 
   function dispatch(kind, key) {
     if (!ctx || ctx.stopped) return;
@@ -309,7 +387,7 @@
       }
       const c = {
         stopped: false, forevers: [], mainDone: false,
-        handlers: { button: {}, gesture: {}, ir: null, logo: null },
+        handlers: { button: {}, gesture: {}, ir: null, logo: null, lt: [] },
         onError: (e) => {
           if (e && e.isStop) return;
           if (c.stopped) return;

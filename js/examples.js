@@ -284,6 +284,101 @@
       ifs([or(cmp(patrol('L'), '==', 1), cmp(patrol('R'), '==', 1)), [rgbAll('Red'), back(120), pause(500), motor('M1', 'CW', 100), motor('M2', 'CCW', 100), pause(rand(300, 900))]],
         ELSE(rgbAll('Blue'), fwd(110))))) });
 
+  // =============== 마퀸 V4 확장 블록 ===============
+  const ltEvent = (side, vi, ...st) => B('mq_lt_event', { f: { SIDE: side === 'L' ? 'PatrolLeft' : 'PatrolRight', VI: vi }, s: { DO: st } });
+  add({ id: 'lt_event', group: '라인트레이싱', name: '라인 센서 이벤트로 주행 (V4)', map: 'line_oval',
+    desc: '"라인 트레이싱 센서 ~ 가 ~ 일 때" 이벤트 블록만으로 라인을 따라갑니다. 센서가 검은 선(높음)을 감지할 때마다 해당 방향으로 회전합니다.',
+    xml: program(onStart(fwd(80)),
+      ltEvent('L', 'High', motor('M1', 'CW', 0), motor('M2', 'CW', 90)),
+      ltEvent('R', 'High', motor('M1', 'CW', 90), motor('M2', 'CW', 0)),
+      ltEvent('L', 'Low', ifs([cmp(patrol('R'), '==', 0), [fwd(80)]]))) });
+
+  // =============== 마퀸 V5 ===============
+  const G5 = '마퀸 V5';
+  const v5init = () => B('mq5_init');
+  const v5patrol = (on) => B('mq5_patrolling', { f: { ONOFF: on ? 'ON' : 'OFF' } });
+  const v5motor = (m, dir, sp) => B('mq5_motor_run', { f: { MOTOR: m, DIR: dir }, v: { SPEED: sp } });
+  const v5stop = () => B('mq5_motor_stop', { f: { MOTOR: 'All' } });
+  const v5us = () => B('mq5_ultrasonic');
+  const v5line = (k) => B('mq5_read_patrol', { f: { PATROL: k } });
+  const v5adc = (k) => B('mq5_read_patrol_data', { f: { PATROL: k } });
+  const v5rgb = (t, c) => B('mq5_rgb', { f: { TYPE: t, COLOR: c } });
+  const v5blink = (t, n, g, c) => B('mq5_rgb_blink', { f: { TYPE: t, GRADE: String(g), COLOR: c }, v: { NUM: n } });
+  const v5grad = (t, g) => B('mq5_rgb_change', { f: { TYPE: t, GRADE: String(g) } });
+  const v5off = (t) => B('mq5_rgb_off', { f: { TYPE: t } });
+  const v5light = (t) => B('mq5_light', { f: { TYPE: t } });
+  const v5batt = () => B('mq5_battery', { f: { BATT: 'Alkaline' } });
+  const v5ver = () => B('mq5_version');
+
+  add({ id: 'v5_lights', group: G5, name: 'V5: RGB 자동차 조명', map: 'open', model: 'v5',
+    desc: '마퀸 V5 의 앞쪽 RGB 자동차 조명을 여러 색으로 켜고, 깜박임과 그라데이션 효과를 보여 줍니다.',
+    xml: program(onStart(v5init(), showStr(v5ver())), forever(
+      v5rgb('All', 'Red'), pause(700), v5rgb('Left', 'Green'), v5rgb('Right', 'Blue'), pause(700),
+      v5blink('All', 4, 3, 'Yellow'), pause(1800), v5grad('All', 3), pause(3000), v5off('All'), pause(500))) });
+  add({ id: 'v5_auto_patrol', group: G5, name: 'V5: 내장 라인 트레이싱', map: 'line_curve', model: 'v5',
+    desc: '"라인 트레이싱 켜기" 블록 하나로 보드에 내장된 자동 라인 트레이싱을 시작합니다. A 버튼은 시작, B 버튼은 정지입니다.',
+    xml: program(onStart(v5init(), icon('HAPPY')), onButton('A', v5rgb('All', 'Green'), v5patrol(true)), onButton('B', v5patrol(false), v5rgb('All', 'Red'))) });
+  add({ id: 'v5_line3', group: G5, name: 'V5: 3센서 라인트레이싱', map: 'line_curve', model: 'v5',
+    desc: 'L · M · R 세 개의 라인 센서를 이용합니다. 가운데(M)만 검은색이면 직진, 왼쪽/오른쪽 센서가 선을 감지하면 그쪽으로 회전합니다.',
+    xml: program(onStart(v5init(), setV('last', 0)), forever(setV('L', v5line('L')), setV('M', v5line('M')), setV('R', v5line('R')),
+      ifs([cmp(getV('L'), '==', 1), [v5motor('M1', 'CW', 20), v5motor('M2', 'CW', 120), setV('last', 1), v5rgb('Left', 'Yellow'), v5rgb('Right', 'Black')]],
+        [cmp(getV('R'), '==', 1), [v5motor('M1', 'CW', 120), v5motor('M2', 'CW', 20), setV('last', 2), v5rgb('Left', 'Black'), v5rgb('Right', 'Yellow')]],
+        [cmp(getV('M'), '==', 1), [v5motor('All', 'CW', 130), v5rgb('All', 'Green')]],
+        ELSE(v5rgb('All', 'Red'), ifs([cmp(getV('last'), '==', 1), [v5motor('M1', 'CCW', 60), v5motor('M2', 'CW', 60)]], ELSE(v5motor('M1', 'CW', 60), v5motor('M2', 'CCW', 60))))))) });
+  add({ id: 'v5_adc', group: G5, name: 'V5: 라인 센서 ADC 값 보기', map: 'line_oval', model: 'v5',
+    desc: '라인 센서의 상태(0/1)와 아날로그(ADC) 값을 시리얼로 출력합니다. 로봇을 드래그해 선 위아래로 옮기며 값의 변화를 관찰하세요.',
+    xml: program(onStart(v5init()), forever(serialVal('L', v5adc('L')), serialVal('M', v5adc('M')), serialVal('R', v5adc('R')),
+      setV('state', arith(arith(arith(v5line('L'), '*', 100), '+', arith(v5line('M'), '*', 10)), '+', v5line('R'))), showNum(getV('state')), pause(300))) });
+  add({ id: 'v5_light', group: G5, name: 'V5: 어두우면 전조등 켜기', map: 'open', model: 'v5',
+    desc: '광센서 값이 낮으면(어두우면) 흰색 전조등을 켜고, 밝으면 끕니다. 아래 "환경" 탭의 빛 슬라이더를 움직여 보세요.',
+    xml: program(onStart(v5init()), forever(setV('light', v5light('Left')), serialVal('light', getV('light')),
+      ifs([cmp(getV('light'), '<', 300), [v5rgb('All', 'White'), icon('ASLEEP')]], ELSE(v5off('All'), icon('HAPPY'))), pause(200))) });
+  add({ id: 'v5_battery', group: G5, name: 'V5: 배터리 잔량 확인', map: 'open', model: 'v5',
+    desc: '배터리 잔량(%)을 읽어 표시하고, 30% 미만이면 빨간색, 아니면 초록색 조명을 켭니다. 주행할수록 조금씩 줄어듭니다.',
+    xml: program(onStart(v5init()), onButton('A', setV('batt', v5batt()), showNum(getV('batt')), ifs([cmp(getV('batt'), '<', 30), [v5rgb('All', 'Red')]], ELSE(v5rgb('All', 'Green')))),
+      onButton('B', v5motor('All', 'CW', 150), pause(3000), v5stop())) });
+  add({ id: 'v5_avoid', group: G5, name: 'V5: 장애물 회피 + 방향 조명', map: 'obstacles', model: 'v5',
+    desc: '초음파 센서로 장애물을 피하며, 회전하는 쪽 조명을 노란색으로 깜박입니다.',
+    xml: program(onStart(v5init()), forever(
+      ifs([cmp(v5us(), '<', 20), [v5stop(), v5motor('All', 'CCW', 100), pause(400),
+        ifs([cmp(rand(0, 1), '==', 0), [v5blink('Left', 3, 4, 'Yellow'), v5motor('M1', 'CCW', 100), v5motor('M2', 'CW', 100)]],
+          ELSE(v5blink('Right', 3, 4, 'Yellow'), v5motor('M1', 'CW', 100), v5motor('M2', 'CCW', 100))), pause(rand(300, 700)), v5stop()]],
+        ELSE(v5rgb('All', 'White'), v5motor('All', 'CW', 140))))) });
+  add({ id: 'py_v5', group: G5, name: 'V5: MicroPython 3센서 라인트레이싱', map: 'line_curve', model: 'v5', mode: 'python',
+    desc: 'maqueen_v5 모듈(I2C 레지스터 방식)로 작성한 3센서 라인트레이싱입니다.',
+    py: `from microbit import *
+import maqueen_v5 as mq
+
+mq.init()
+display.scroll(mq.version())
+last = 0
+while True:
+    L = mq.read_patrol(mq.L)
+    M = mq.read_patrol(mq.M)
+    R = mq.read_patrol(mq.R)
+    if L:
+        mq.motor_run(mq.M1, mq.CW, 20)
+        mq.motor_run(mq.M2, mq.CW, 120)
+        mq.set_rgb_light(mq.LEFT, mq.YELLOW)
+        last = 1
+    elif R:
+        mq.motor_run(mq.M1, mq.CW, 120)
+        mq.motor_run(mq.M2, mq.CW, 20)
+        mq.set_rgb_light(mq.RIGHT, mq.YELLOW)
+        last = 2
+    elif M:
+        mq.motor_run(mq.ALL, mq.CW, 130)
+        mq.set_rgb_light(mq.BOTH, mq.GREEN)
+    else:
+        if last == 1:
+            mq.motor_run(mq.M1, mq.CCW, 60)
+            mq.motor_run(mq.M2, mq.CW, 60)
+        else:
+            mq.motor_run(mq.M1, mq.CW, 60)
+            mq.motor_run(mq.M2, mq.CCW, 60)
+    sleep(10)
+` });
+
   // =============== MicroPython 전용 ===============
   add({ id: 'py_i2c', group: 'MicroPython 직접 제어', name: 'I2C 로 모터 직접 제어', map: 'open', mode: 'python',
     desc: '마퀸 모터 드라이버(I2C 주소 0x10)에 레지스터 값을 직접 써서 모터를 제어합니다.',

@@ -8,7 +8,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='8' width='26' height='16' rx='5' fill='%231b1d22'/%3E%3Ccircle cx='7' cy='24' r='5' fill='%23f2c200'/%3E%3Ccircle cx='25' cy='24' r='5' fill='%23f2c200'/%3E%3Crect x='11' y='4' width='10' height='9' rx='1' fill='%230fbc11'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="vendor/codemirror/codemirror.css" />
   <link rel="stylesheet" href="vendor/codemirror/material-darker.css" />
-  <link rel="stylesheet" href="css/style.css?v=5" />
+  <link rel="stylesheet" href="css/style.css?v=10" />
 </head>
 <body>
   <header class="topbar">
@@ -72,6 +72,7 @@
     <!-- ================= 시뮬레이션 영역 ================= -->
     <section id="simPane" class="pane sim-pane">
       <div class="sim-toolbar">
+        <select id="modelSel" title="로봇 모델 (확장 버전)"><option value="v4">마퀸 V4</option><option value="v5">마퀸 V5</option></select>
         <select id="mapSel" title="주행 공간 선택"></select>
         <div class="seg" id="camSeg" title="카메라">
           <button data-cam="orbit" class="active" title="자유 시점 (마우스 드래그: 회전, 휠: 확대)">자유</button>
@@ -97,7 +98,8 @@
         <div class="hud">
           <div id="hudState" class="hud-state">● 정지됨</div>
           <div class="hud-row"><span>초음파</span><b id="hudUs">-- cm</b></div>
-          <div class="hud-row"><span>라인</span><b class="hud-line"><i id="hudL"></i><i id="hudR"></i></b></div>
+          <div class="hud-row"><span>라인</span><b class="hud-line"><i id="hud0"></i><i id="hud1"></i><i id="hud2"></i></b></div>
+          <div class="hud-row"><span>모델</span><b id="hudModel">마퀸 V4</b></div>
           <div class="hud-row"><span>시간</span><b id="hudTime">0.0 s</b></div>
         </div>
         <div class="view-tip">로봇 드래그: 이동 · Shift+드래그: 회전</div>
@@ -125,9 +127,10 @@
         <!-- 센서 상태창 -->
         <div class="card status-card">
           <div class="card-title">센서 · 장치 상태</div>
-          <div class="st-line">
-            <div class="ls" id="stLineL"><div class="ls-dot"></div><div class="ls-text"><b>라인 왼쪽</b><small>P13</small></div><div class="ls-val">0</div></div>
-            <div class="ls" id="stLineR"><div class="ls-dot"></div><div class="ls-text"><b>라인 오른쪽</b><small>P14</small></div><div class="ls-val">0</div></div>
+          <div class="st-line" id="stLineBox">
+            <div class="ls" id="stLine0"><div class="ls-dot"></div><div class="ls-text"><b>라인 왼쪽</b><small>P13</small></div><div class="ls-val">0</div></div>
+            <div class="ls" id="stLine1"><div class="ls-dot"></div><div class="ls-text"><b>라인 가운데</b><small>M</small></div><div class="ls-val">0</div></div>
+            <div class="ls" id="stLine2"><div class="ls-dot"></div><div class="ls-text"><b>라인 오른쪽</b><small>P14</small></div><div class="ls-val">0</div></div>
           </div>
           <div class="st-us">
             <div class="st-us-head"><b>초음파 거리</b><small>P1 Trig / P2 Echo</small><span class="st-us-val"><b id="stUs">--</b> cm</span></div>
@@ -138,7 +141,7 @@
             <div class="mot"><span class="mot-name">M2 오른쪽</span><span class="mot-dir" id="stM2d">■</span><div class="mbar"><i id="stM2"></i></div><span class="mot-val" id="stM2v">0</span></div>
           </div>
           <div class="st-grid">
-            <div><span>LED P8/P12</span><b><i class="led" id="stLed0"></i><i class="led" id="stLed1"></i></b></div>
+            <div><span id="stLedLabel">LED P8/P12</span><b><i class="led" id="stLed0"></i><i class="led" id="stLed1"></i></b></div>
             <div><span>RGB P15</span><b><i class="rgb" id="stRgb0"></i><i class="rgb" id="stRgb1"></i><i class="rgb" id="stRgb2"></i><i class="rgb" id="stRgb3"></i></b></div>
             <div><span>서보 S1/S2</span><b id="stServo">90° / 90°</b></div>
             <div><span>부저 P0</span><b id="stBuzz">-</b></div>
@@ -146,6 +149,8 @@
             <div><span>IR 수신</span><b id="stIr">-</b></div>
             <div><span>속도</span><b id="stSpeed">0 cm/s</b></div>
             <div><span>위치</span><b id="stPos">-</b></div>
+            <div class="v5only"><span>광센서 L/R</span><b id="stLight">-</b></div>
+            <div class="v5only"><span>배터리 · 자동주행</span><b id="stBatt">-</b></div>
           </div>
         </div>
 
@@ -209,6 +214,17 @@
           <tr><td>IR 수신기</td><td>P16</td><td>NEC 리모컨</td></tr>
           <tr><td>서보 S1 / S2</td><td>I2C 0x10</td><td>레지스터 0x14 / 0x15 ← [각도]</td></tr>
         </table>
+        <h3>마퀸 V5 (I2C 0x10 레지스터)</h3>
+        <table class="pins">
+          <tr><th>기능</th><th>레지스터</th><th>비고</th></tr>
+          <tr><td>라인 센서 L / M / R 상태</td><td>29</td><td>bit2 / bit1 / bit0 (검은 선 = 1)</td></tr>
+          <tr><td>라인 센서 ADC L / M / R</td><td>32 / 34 / 36</td><td>2바이트</td></tr>
+          <tr><td>RGB 자동차 조명 왼쪽 / 오른쪽</td><td>11 / 12</td><td>1 빨강 … 7 흰색, 8 끄기</td></tr>
+          <tr><td>깜박임 / 그라데이션</td><td>13~16 / 17~18</td><td>횟수, 속도 1~5</td></tr>
+          <tr><td>광센서 왼쪽 / 오른쪽</td><td>41 / 43</td><td>0~1023</td></tr>
+          <tr><td>배터리 잔량</td><td>45(종류) / 46</td><td>0~100 %</td></tr>
+          <tr><td>내장 라인 트레이싱</td><td>71</td><td>1 켜기 / 0 끄기</td></tr>
+        </table>
         <h3>MicroPython maqueen 모듈</h3>
         <pre class="code">import maqueen
 maqueen.motor_run(maqueen.ALL, maqueen.CW, 150)
@@ -218,6 +234,15 @@ maqueen.read_patrol(maqueen.LEFT)
 maqueen.write_led(maqueen.RIGHT, 1)
 maqueen.servo_run(maqueen.S1, 90)
 maqueen.ir_read()</pre>
+        <h3>MicroPython maqueen_v5 모듈</h3>
+        <pre class="code">import maqueen_v5 as mq
+mq.init()
+mq.motor_run(mq.ALL, mq.CW, 120)
+mq.read_patrol(mq.M)            # L / M / R
+mq.set_rgb_light(mq.BOTH, mq.CYAN)
+mq.rgb_blink(mq.LEFT, 5, 3, mq.RED)
+mq.line_patrol(True)            # 내장 라인 트레이싱
+mq.read_light(mq.LEFT), mq.battery()</pre>
       </section>
     </div>
   </dialog>
@@ -242,16 +267,16 @@ maqueen.ir_read()</pre>
   <script src="vendor/skulpt/skulpt.min.js"></script>
   <script src="vendor/skulpt/skulpt-stdlib.js"></script>
   <!-- 시뮬레이터 -->
-  <script src="js/assets.js?v=5"></script>
-  <script src="js/world.js?v=5"></script>
-  <script src="js/robot.js?v=5"></script>
-  <script src="js/hardware.js?v=5"></script>
-  <script src="js/robotModel.js?v=5"></script>
-  <script src="js/render3d.js?v=5"></script>
-  <script src="js/jsrt.js?v=5"></script>
-  <script src="js/pyrt.js?v=5"></script>
-  <script src="js/blocks.js?v=5"></script>
-  <script src="js/examples.js?v=5"></script>
-  <script src="js/app.js?v=5"></script>
+  <script src="js/assets.js?v=10"></script>
+  <script src="js/world.js?v=10"></script>
+  <script src="js/robot.js?v=10"></script>
+  <script src="js/hardware.js?v=10"></script>
+  <script src="js/robotModel.js?v=10"></script>
+  <script src="js/render3d.js?v=10"></script>
+  <script src="js/jsrt.js?v=10"></script>
+  <script src="js/pyrt.js?v=10"></script>
+  <script src="js/blocks.js?v=10"></script>
+  <script src="js/examples.js?v=10"></script>
+  <script src="js/app.js?v=10"></script>
 </body>
 </html>

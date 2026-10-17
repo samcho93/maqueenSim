@@ -9,8 +9,10 @@
   const clock = {
     now: 0, // ms (시뮬레이션 시간)
     waiters: [],
+    seq: 0, // sleep 호출 횟수 (프로그램이 다음 대기에 도달했는지 확인용)
     sleep(ms) {
       ms = Math.max(0, Number(ms) || 0);
+      this.seq++;
       return new Promise((resolve, reject) => {
         this.waiters.push({ t: this.now + ms, resolve, reject });
       });
@@ -88,7 +90,20 @@
       this.melodyToken = 0;
       this.tempo = { ticks: 4, bpm: 120 };
       this.music = { freq: 0 };
+      this.i2cPtr = null;
+      // V5 전용 상태
+      this.v5 = {
+        lights: [0, 1].map(() => ({ color: 8, blinkNum: 0, blinkGrade: 1, blinkT0: 0, gradGrade: 0 })),
+        patrol: false, patrolLast: 0, patrolT: 0, batteryType: 1, inited: false,
+      };
       sound.stop();
+    },
+    // 로봇 모델 (v4 / v5)
+    model: 'v4',
+    setModel(m) {
+      this.model = m === 'v5' ? 'v5' : 'v4';
+      if (this.robot) this.robot.model = this.model;
+      this.emit('model', this.model);
     },
     init() {
       this.buttons = { A: false, B: false, LOGO: false };
@@ -164,30 +179,120 @@
       if (idx === 1 || idx === 2) this.motors[1] = { dir, speed };
     },
     setServo(idx, angle) { this.servos[idx] = Math.max(0, Math.min(180, Math.round(Number(angle) || 0))); },
+    // ----- I2C (주소 0x10 마퀸 보드) -----
     i2cWrite(addr, bytes) {
       bytes = Array.from(bytes || []).map((b) => b & 0xff);
-      if (addr !== 0x10) { this.emit('warn', `I2C 주소 0x${addr.toString(16)} 에는 장치가 없습니다.`); return; }
+      if (addr !== 0x10) { this.emit('warn', `I2C 주소 0x${(addr | 0).toString(16)} 에는 장치가 없습니다.`); return; }
+      if (!bytes.length) return;
       const reg = bytes[0];
-      if (reg === 0x00 && bytes.length >= 3) this.setMotor(0, bytes[1], bytes[2]);
-      else if (reg === 0x02 && bytes.length >= 3) this.setMotor(1, bytes[1], bytes[2]);
-      else if (reg === 0x14 && bytes.length >= 2) this.setServo(0, bytes[1]);
-      else if (reg === 0x15 && bytes.length >= 2) this.setServo(1, bytes[1]);
+      if (bytes.length === 1) { this.i2cPtr = reg; return; } // 읽기용 레지스터 지정
+      const v = bytes[1];
+      const L = this.v5.lights;
+      switch (reg) {
+        case 0x00: if (bytes.length >= 3) this.setMotor(0, bytes[1], bytes[2]); break;
+        case 0x02: if (bytes.length >= 3) this.setMotor(1, bytes[1], bytes[2]); break;
+        case 0x14: this.setServo(0, v); break;          // S1 (20)
+        case 0x15: this.setServo(1, v); break;          // S2 (21)
+        case 11: L[0].color = v; L[0].blinkNum = 0; L[0].gradGrade = 0; break;   // RGB_L
+        case 12: L[1].color = v; L[1].blinkNum = 0; L[1].gradGrade = 0; break;   // RGB_R
+        case 13: L[0].blinkNum = v; L[0].blinkT0 = clock.now; L[0].gradGrade = 0; break;
+        case 14: L[0].blinkGrade = Math.max(1, v); break;
+        case 15: L[1].blinkNum = v; L[1].blinkT0 = clock.now; L[1].gradGrade = 0; break;
+        case 16: L[1].blinkGrade = Math.max(1, v); break;
+        case 17: L[0].gradGrade = v; L[0].blinkNum = 0; break;
+        case 18: L[1].gradGrade = v; L[1].blinkNum = 0; break;
+        case 45: this.v5.batteryType = v; break;        // BATTERY_SET
+        case 70: this.v5.inited = true; break;          // MY_SYS_INIT (0x46)
+        case 71: this.setPatrol(!!v); break;            // LINE_WALKING
+        default: break;
+      }
+      this.i2cPtr = null;
+    },
+    i2cRegs() {
+      const r = this.robot, isV5 = this.model === 'v5';
+      const ver = isV5 ? 'MaqueenV5.0' : 'MaqueenV4.0';
+      const m = {};
+      const put16 = (reg, val) => { val = Math.max(0, Math.min(65535, Math.round(val))); m[reg] = (val >> 8) & 255; m[reg + 1] = val & 255; };
+      // 29: 라인센서 상태 비트 (L=bit2, M=bit1, R=bit0)
+      if (r) {
+        const s = isV5 ? [r.lineSensor(0), r.lineSensor(1), r.lineSensor(2)] : [r.lineSensor(0), 0, r.lineSensor(1)];
+        m[29] = (s[0] << 2) | (s[1] << 1) | s[2];
+        const adc = (i) => (r.lineOffsets().length > i ? Math.round(((255 - r.lineLum(i)) / 255) * 1023) : 0);
+        if (isV5) { put16(32, adc(0)); put16(34, adc(1)); put16(36, adc(2)); put16(30, adc(0)); put16(38, adc(2)); }
+      }
+      put16(41, this.lightValue(0)); put16(43, this.lightValue(1));
+      m[46] = this.battery();
+      m[50] = ver.length;
+      for (let i = 0; i < ver.length; i++) m[51 + i] = ver.charCodeAt(i);
+      m[71] = this.v5.patrol ? 1 : 0;
+      return m;
     },
     i2cRead(addr, n) {
-      const ver = 'MAQUEEN_V4_SIM';
+      if (addr !== 0x10) return new Array(n).fill(0);
+      const m = this.i2cRegs();
+      let ptr = this.i2cPtr;
+      if (ptr === null || ptr === undefined) ptr = 51; // 레지스터 미지정 시 버전 문자열
       const out = [];
-      for (let i = 0; i < n; i++) out.push(i < ver.length ? ver.charCodeAt(i) : 0);
+      for (let i = 0; i < n; i++) out.push(m[ptr + i] | 0);
       return out;
     },
+    // V5: 광센서(0~1023), 배터리(0~100)
+    lightValue(side) {
+      const base = (this.env.light / 255) * 1023;
+      const h = this.robot ? Math.sin(this.robot.th + (side ? 0.6 : -0.6)) * 25 : 0;
+      return Math.max(0, Math.min(1023, Math.round(base + h + (Math.random() - 0.5) * 6)));
+    },
+    battery() {
+      const used = this.robot ? this.robot.odo / 600 : 0; // 주행거리에 따라 천천히 감소
+      const base = this.v5.batteryType === 0 ? 92 : 88;
+      return Math.max(0, Math.min(100, Math.round(base - used)));
+    },
+    // V5 RGB 자동차 조명의 현재 색 [r,g,b] (0~255)
+    carLightRGB(i) {
+      const C = { 1: [255, 0, 0], 2: [0, 255, 0], 3: [255, 255, 0], 4: [0, 0, 255], 5: [255, 0, 255], 6: [0, 255, 255], 7: [255, 255, 255], 8: [0, 0, 0] };
+      const L = this.v5.lights[i];
+      if (L.gradGrade > 0) {
+        const period = 6000 / L.gradGrade, h = ((clock.now % period) / period) * 360;
+        const f = (n) => { const k = (n + h / 60) % 6; return Math.round(255 * (1 - Math.max(0, Math.min(k, 4 - k, 1)))); };
+        return [f(5), f(3), f(1)];
+      }
+      const c = C[L.color] || C[8];
+      if (L.blinkNum > 0) {
+        const half = 600 / L.blinkGrade, t = clock.now - L.blinkT0, k = Math.floor(t / half);
+        if (k >= L.blinkNum * 2) { L.blinkNum = 0; return c; }
+        return k % 2 ? [0, 0, 0] : c;
+      }
+      return c;
+    },
+    // V5 내장 라인 트레이싱(펌웨어)
+    setPatrol(on) {
+      this.v5.patrol = on;
+      if (!on) this.setMotor(2, 0, 0);
+    },
+    patrolStep() {
+      const r = this.robot;
+      if (!r || this.model !== 'v5' || !this.v5.patrol) return;
+      if (clock.now - this.v5.patrolT < 10) return;
+      this.v5.patrolT = clock.now;
+      const L = r.lineSensor(0), M = r.lineSensor(1), R = r.lineSensor(2);
+      const sp = 90, P = this.v5;
+      if (M && !L && !R) { this.setMotor(2, 0, sp); P.patrolLast = 0; }
+      else if (L && !R) { this.setMotor(0, 0, M ? 40 : 0); this.setMotor(1, 0, sp); P.patrolLast = 1; }
+      else if (R && !L) { this.setMotor(0, 0, sp); this.setMotor(1, 0, M ? 40 : 0); P.patrolLast = 2; }
+      else if (L && R) { this.setMotor(2, 0, sp); }
+      else if (P.patrolLast === 1) { this.setMotor(0, 1, 60); this.setMotor(1, 0, 60); }
+      else if (P.patrolLast === 2) { this.setMotor(0, 0, 60); this.setMotor(1, 1, 60); }
+      else this.setMotor(2, 0, 60);
+    },
     ultrasonic() { return this.robot ? this.robot.ultrasonicCm() : 500; },
-    lineSensor(side) { return this.robot ? this.robot.lineSensor(side) : 0; },
+    lineSensor(side) { return this.robot ? this.robot.lineLR(side) : 0; }, // V4 P13/P14 (V5 에서는 L/R 센서)
 
     // ----- 핀 -----
     digitalWrite(pin, v) {
       v = v ? 1 : 0;
       this.pins[pin] = v;
-      if (pin === 8) this.redLeds[0] = v;
-      else if (pin === 12) this.redLeds[1] = v;
+      if (pin === 8 && this.model === 'v4') this.redLeds[0] = v;
+      else if (pin === 12 && this.model === 'v4') this.redLeds[1] = v;
       else if (pin === 1 && v === 0) this._trigT = clock.now;
     },
     digitalRead(pin) {

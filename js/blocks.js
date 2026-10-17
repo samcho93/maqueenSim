@@ -4,7 +4,7 @@
   const JS = javascript.javascriptGenerator, JO = javascript.Order;
   const PY = python.pythonGenerator, PO = python.Order;
 
-  const C = { basic: '#1E90FF', input: '#D400D4', led: '#5C2D91', music: '#E63022', pins: '#B22222', serial: '#002050', maqueen: '#0FBC11', rgb: '#2BA3B5', logic: '#00A4A6', loops: '#00AA00', math: '#9400D3', vars: '#DC143C', text: '#B8860B', func: '#3455DB' };
+  const C = { v5: '#00A383', basic: '#1E90FF', input: '#D400D4', led: '#5C2D91', music: '#E63022', pins: '#B22222', serial: '#002050', maqueen: '#0FBC11', rgb: '#2BA3B5', logic: '#00A4A6', loops: '#00AA00', math: '#9400D3', vars: '#DC143C', text: '#B8860B', func: '#3455DB' };
 
   const ICON_OPTS = Object.keys(A.ICON_KO).map((k) => [A.ICON_KO[k], k]);
   const MELODY_OPTS = Object.keys(A.MELODIES).map((k) => [A.MELODY_KO[k], k]);
@@ -22,6 +22,9 @@
   const ARROW_JS = ['North', 'NorthEast', 'East', 'SouthEast', 'South', 'SouthWest', 'West', 'NorthWest'];
   const ARROW_PY = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 
+  const V5_SIDE = [['왼쪽', 'Left'], ['오른쪽', 'Right'], ['전체', 'All']];
+  const V5_COLORS = [['빨강', 'Red'], ['초록', 'Green'], ['노랑', 'Yellow'], ['파랑', 'Blue'], ['보라', 'Purple'], ['청록', 'Cyan'], ['흰색', 'White'], ['끄기', 'Black']];
+  const V5_GRADE = [['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '5']];
   const num = (name, check) => ({ type: 'input_value', name, check: check || null });
   const defs = [
     // ----- 기본 -----
@@ -60,15 +63,34 @@
     // ----- 시리얼 -----
     { type: 'mb_serial_line', message0: '시리얼 출력: 문자열 + 줄바꿈 %1', args0: [num('TEXT')], previousStatement: null, nextStatement: null, colour: C.serial, inputsInline: true },
     { type: 'mb_serial_value', message0: '시리얼 출력: 이름 %1 = 값 %2', args0: [num('NAME', 'String'), num('VAL', 'Number')], previousStatement: null, nextStatement: null, colour: C.serial, inputsInline: true },
-    // ----- 마퀸 -----
-    { type: 'mq_motor_run', message0: '모터 %1 방향 %2 속도 %3', args0: [{ type: 'field_dropdown', name: 'MOTOR', options: [['모두', 'All'], ['왼쪽(M1)', 'M1'], ['오른쪽(M2)', 'M2']] }, { type: 'field_dropdown', name: 'DIR', options: [['전진 ⬆', 'CW'], ['후진 ⬇', 'CCW']] }, num('SPEED', 'Number')], previousStatement: null, nextStatement: null, colour: C.maqueen, inputsInline: true, tooltip: '속도: 0~255' },
-    { type: 'mq_motor_stop', message0: '모터 %1 정지', args0: [{ type: 'field_dropdown', name: 'MOTOR', options: [['모두', 'All'], ['왼쪽(M1)', 'M1'], ['오른쪽(M2)', 'M2']] }], previousStatement: null, nextStatement: null, colour: C.maqueen },
-    { type: 'mq_ultrasonic', message0: '초음파 센서 거리 (cm)', output: 'Number', colour: C.maqueen },
-    { type: 'mq_read_patrol', message0: '라인 센서 %1 값', args0: [{ type: 'field_dropdown', name: 'SIDE', options: [['왼쪽', 'PatrolLeft'], ['오른쪽', 'PatrolRight']] }], output: 'Number', colour: C.maqueen, tooltip: '검은 선: 1, 흰 바닥: 0' },
-    { type: 'mq_write_led', message0: 'LED %1 %2', args0: [{ type: 'field_dropdown', name: 'LED', options: [['왼쪽', 'LEDLeft'], ['오른쪽', 'LEDRight']] }, { type: 'field_dropdown', name: 'STATE', options: [['켜기', 'turnOn'], ['끄기', 'turnOff']] }], previousStatement: null, nextStatement: null, colour: C.maqueen },
+    // ----- 마퀸 V4 (pxt-maqueen 'maqueen' 공식 한글 라벨) -----
+    { type: 'mq_motor_run', message0: '모터 %1 방향 %2 속도 %3', args0: [{ type: 'field_dropdown', name: 'MOTOR', options: [['왼쪽', 'M1'], ['오른쪽', 'M2'], ['전체', 'All']] }, { type: 'field_dropdown', name: 'DIR', options: [['정회전', 'CW'], ['역회전', 'CCW']] }, num('SPEED', 'Number')], previousStatement: null, nextStatement: null, colour: C.maqueen, inputsInline: true, tooltip: '정회전=전진, 역회전=후진, 속도: 0~255' },
+    { type: 'mq_motor_stop', message0: '모터 정지 %1', args0: [{ type: 'field_dropdown', name: 'MOTOR', options: [['왼쪽', 'M1'], ['오른쪽', 'M2'], ['전체', 'All']] }], previousStatement: null, nextStatement: null, colour: C.maqueen },
+    { type: 'mq_motor_stop_all', message0: '모든 모터 정지', previousStatement: null, nextStatement: null, colour: C.maqueen },
+    { type: 'mq_ultrasonic', message0: '초음파 센서 거리 읽기(CM)', output: 'Number', colour: C.maqueen },
+    { type: 'mq_read_patrol', message0: '라인 트레이싱 센서 %1', args0: [{ type: 'field_dropdown', name: 'SIDE', options: [['왼쪽', 'PatrolLeft'], ['오른쪽', 'PatrolRight']] }], output: 'Number', colour: C.maqueen, tooltip: '검은 선: 1, 흰 바닥: 0' },
+    { type: 'mq_lt_event', message0: '라인 트레이싱 센서 %1 가 %2 일 때 %3 %4', args0: [{ type: 'field_dropdown', name: 'SIDE', options: [['왼쪽', 'PatrolLeft'], ['오른쪽', 'PatrolRight']] }, { type: 'field_dropdown', name: 'VI', options: [['높음', 'High'], ['낮음', 'Low']] }, { type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], colour: C.maqueen, tooltip: '높음 = 검은 선 감지(1)' },
+    { type: 'mq_write_led', message0: 'LED등 %1 %2', args0: [{ type: 'field_dropdown', name: 'LED', options: [['왼쪽', 'LEDLeft'], ['오른쪽', 'LEDRight']] }, { type: 'field_dropdown', name: 'STATE', options: [['켜기', 'turnOn'], ['끄기', 'turnOff']] }], previousStatement: null, nextStatement: null, colour: C.maqueen },
     { type: 'mq_servo', message0: '서보 %1 각도 %2', args0: [{ type: 'field_dropdown', name: 'SERVO', options: [['S1', 'S1'], ['S2', 'S2']] }, num('ANGLE', 'Number')], previousStatement: null, nextStatement: null, colour: C.maqueen, inputsInline: true },
-    { type: 'mq_on_ir', message0: 'IR 리모컨 신호 받으면 실행 %1 %2', args0: [{ type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], colour: C.maqueen },
-    { type: 'mq_ir_value', message0: 'IR 리모컨 값', output: 'Number', colour: C.maqueen },
+    { type: 'mq_on_ir', message0: '적외선 수신 시 실행 %1 %2', args0: [{ type: 'input_dummy' }, { type: 'input_statement', name: 'DO' }], colour: C.maqueen },
+    { type: 'mq_ir_value', message0: '적외선 값', output: 'Number', colour: C.maqueen },
+    { type: 'mq_version', message0: '제품 정보 가져오기', output: 'String', colour: C.maqueen },
+    // ----- 마퀸 V5 (pxt-maqueen 'Maqueen_V5' 공식 한글 라벨) -----
+    { type: 'mq5_init', message0: '성공할 때까지 MaqueenV5 초기화', previousStatement: null, nextStatement: null, colour: C.v5 },
+    { type: 'mq5_patrolling', message0: '라인 트레이싱 %1', args0: [{ type: 'field_dropdown', name: 'ONOFF', options: [['켜기', 'ON'], ['끄기', 'OFF']] }], previousStatement: null, nextStatement: null, colour: C.v5, tooltip: '보드에 내장된 자동 라인 트레이싱 기능을 켜거나 끕니다.' },
+    { type: 'mq5_motor_run', message0: '모터 %1 방향 %2 속도 %3', args0: [{ type: 'field_dropdown', name: 'MOTOR', options: [['왼쪽', 'M1'], ['오른쪽', 'M2'], ['전체', 'All']] }, { type: 'field_dropdown', name: 'DIR', options: [['정회전', 'CW'], ['역회전', 'CCW']] }, num('SPEED', 'Number')], previousStatement: null, nextStatement: null, colour: C.v5, inputsInline: true, tooltip: '정회전=전진, 역회전=후진, 속도: 0~255' },
+    { type: 'mq5_motor_stop', message0: '모터 정지 %1', args0: [{ type: 'field_dropdown', name: 'MOTOR', options: [['왼쪽', 'M1'], ['오른쪽', 'M2'], ['전체', 'All']] }], previousStatement: null, nextStatement: null, colour: C.v5 },
+    { type: 'mq5_ultrasonic', message0: '초음파 센서 거리 읽기(CM)', output: 'Number', colour: C.v5 },
+    { type: 'mq5_read_patrol', message0: '라인 트레이싱 센서 %1 상태 읽기', args0: [{ type: 'field_dropdown', name: 'PATROL', options: [['L', 'L'], ['M', 'M'], ['R', 'R']] }], output: 'Number', colour: C.v5, tooltip: '흰 바닥: 0, 검은 선/허공: 1' },
+    { type: 'mq5_read_patrol_data', message0: '라인 트레이싱 센서 %1 ADC 데이터 읽기', args0: [{ type: 'field_dropdown', name: 'PATROL', options: [['L', 'L'], ['M', 'M'], ['R', 'R']] }], output: 'Number', colour: C.v5 },
+    { type: 'mq5_servo', message0: '서보 %1 각도 %2', args0: [{ type: 'field_dropdown', name: 'SERVO', options: [['S1', 'S1'], ['S2', 'S2']] }, num('ANGLE', 'Number')], previousStatement: null, nextStatement: null, colour: C.v5, inputsInline: true },
+    { type: 'mq5_rgb', message0: 'RGB 자동차 조명 %1 색상 %2', args0: [{ type: 'field_dropdown', name: 'TYPE', options: V5_SIDE }, { type: 'field_dropdown', name: 'COLOR', options: V5_COLORS }], previousStatement: null, nextStatement: null, colour: C.v5 },
+    { type: 'mq5_rgb_blink', message0: 'RGB 자동차 조명 %1 깜박임 횟수 %2 속도 %3 색상 %4', args0: [{ type: 'field_dropdown', name: 'TYPE', options: V5_SIDE }, num('NUM', 'Number'), { type: 'field_dropdown', name: 'GRADE', options: V5_GRADE }, { type: 'field_dropdown', name: 'COLOR', options: V5_COLORS }], previousStatement: null, nextStatement: null, colour: C.v5, inputsInline: true },
+    { type: 'mq5_rgb_change', message0: 'RGB 자동차 조명 %1 그라데이션 속도 %2', args0: [{ type: 'field_dropdown', name: 'TYPE', options: V5_SIDE }, { type: 'field_dropdown', name: 'GRADE', options: V5_GRADE }], previousStatement: null, nextStatement: null, colour: C.v5 },
+    { type: 'mq5_rgb_off', message0: '%1 RGB 자동차 조명 끄기', args0: [{ type: 'field_dropdown', name: 'TYPE', options: V5_SIDE }], previousStatement: null, nextStatement: null, colour: C.v5 },
+    { type: 'mq5_light', message0: '광도 값 읽기 %1', args0: [{ type: 'field_dropdown', name: 'TYPE', options: [['왼쪽', 'Left'], ['오른쪽', 'Right']] }], output: 'Number', colour: C.v5, tooltip: '0~1023' },
+    { type: 'mq5_battery', message0: '배터리 잔량 읽기 %1', args0: [{ type: 'field_dropdown', name: 'BATT', options: [['알카라인 배터리', 'Alkaline'], ['리튬 배터리', 'Lithium']] }], output: 'Number', colour: C.v5, tooltip: '0~100 (%)' },
+    { type: 'mq5_version', message0: '버전 번호 읽기', output: 'String', colour: C.v5 },
     // ----- RGB (네오픽셀 P15) -----
     { type: 'mq_rgb_all', message0: 'RGB LED 모두 %1 색으로 켜기', args0: [{ type: 'field_dropdown', name: 'COLOR', options: COLOR_OPTS }], previousStatement: null, nextStatement: null, colour: C.rgb },
     { type: 'mq_rgb_pixel', message0: 'RGB LED %1 번을 %2 색으로', args0: [num('IDX', 'Number'), { type: 'field_dropdown', name: 'COLOR', options: COLOR_OPTS }], previousStatement: null, nextStatement: null, colour: C.rgb, inputsInline: true, tooltip: '번호: 0~3' },
@@ -89,7 +111,7 @@
   defs.push({ type: 'mb_show_leds', message0: 'LED 출력 %1', args0: [{ type: 'input_dummy' }], message1: ledMsg.join(' '), args1: ledArgs, previousStatement: null, nextStatement: null, colour: C.basic });
 
   Blockly.defineBlocksWithJsonArray(defs);
-  const HATS = ['mb_on_start', 'mb_forever', 'mb_on_button', 'mb_on_shake', 'mq_on_ir'];
+  const HATS = ['mb_on_start', 'mb_forever', 'mb_on_button', 'mb_on_shake', 'mq_on_ir', 'mq_lt_event'];
 
   // ===================== JavaScript (MakeCode) =====================
   const j = (t, f) => (JS.forBlock[t] = f);
@@ -147,6 +169,26 @@
   j('mq_write_led', (b) => `maqueen.writeLED(maqueen.LED.${b.getFieldValue('LED')}, maqueen.LEDswitch.${b.getFieldValue('STATE')})\n`);
   j('mq_servo', (b) => `maqueen.servoRun(maqueen.Servos.${b.getFieldValue('SERVO')}, ${v(b, 'ANGLE', '90')})\n`);
   j('mq_ir_value', () => ['maqueen.IR_read()', JO.FUNCTION_CALL]);
+  j('mq_motor_stop_all', () => 'maqueen.motorStopAll()\n');
+  j('mq_version', () => ['maqueen.IR_read_version()', JO.FUNCTION_CALL]);
+  j('mq_lt_event', (b) => `maqueen.ltEvent(maqueen.Patrol1.${b.getFieldValue('SIDE')}, maqueen.Voltage.${b.getFieldValue('VI')}, function () {\n${st(b)}})\n`);
+  // V5
+  const V5 = 'Maqueen_V5';
+  j('mq5_init', () => `${V5}.I2CInit()\n`);
+  j('mq5_patrolling', (b) => `${V5}.patrolling(${V5}.Patrolling.${b.getFieldValue('ONOFF')})\n`);
+  j('mq5_motor_run', (b) => `${V5}.motorRun(${V5}.Motors.${b.getFieldValue('MOTOR')}, ${V5}.Dir.${b.getFieldValue('DIR')}, ${v(b, 'SPEED', '0')})\n`);
+  j('mq5_motor_stop', (b) => `${V5}.motorStop(${V5}.Motors.${b.getFieldValue('MOTOR')})\n`);
+  j('mq5_ultrasonic', () => [`${V5}.Ultrasonic()`, JO.FUNCTION_CALL]);
+  j('mq5_read_patrol', (b) => [`${V5}.readPatrol(${V5}.Patrol.${b.getFieldValue('PATROL')})`, JO.FUNCTION_CALL]);
+  j('mq5_read_patrol_data', (b) => [`${V5}.readPatrolData(${V5}.Patrol.${b.getFieldValue('PATROL')})`, JO.FUNCTION_CALL]);
+  j('mq5_servo', (b) => `${V5}.servoRun(${V5}.Servos.${b.getFieldValue('SERVO')}, ${v(b, 'ANGLE', '90')})\n`);
+  j('mq5_rgb', (b) => `${V5}.setRgblLed(${V5}.DirectionType.${b.getFieldValue('TYPE')}, ${V5}.CarLightColors.${b.getFieldValue('COLOR')})\n`);
+  j('mq5_rgb_blink', (b) => `${V5}.setRgbBlink(${V5}.DirectionType.${b.getFieldValue('TYPE')}, ${v(b, 'NUM', '3')}, ${V5}.SpeedGrade.speed${b.getFieldValue('GRADE')}, ${V5}.CarLightColors.${b.getFieldValue('COLOR')})\n`);
+  j('mq5_rgb_change', (b) => `${V5}.setRgbchange(${V5}.DirectionType.${b.getFieldValue('TYPE')}, ${V5}.SpeedGrade.speed${b.getFieldValue('GRADE')})\n`);
+  j('mq5_rgb_off', (b) => `${V5}.setRgbOff(${V5}.DirectionType.${b.getFieldValue('TYPE')})\n`);
+  j('mq5_light', (b) => [`${V5}.readLightIntensity(${V5}.DirectionType2.${b.getFieldValue('TYPE')})`, JO.FUNCTION_CALL]);
+  j('mq5_battery', (b) => [`${V5}.getBatteryData(${V5}.BatteryType.${b.getFieldValue('BATT')})`, JO.FUNCTION_CALL]);
+  j('mq5_version', () => [`${V5}.readVersion()`, JO.FUNCTION_CALL]);
   j('mq_rgb_all', (b) => { RGB_DEF(); return `strip.showColor(neopixel.colors(NeoPixelColors.${b.getFieldValue('COLOR')}))\n`; });
   j('mq_rgb_pixel', (b) => { RGB_DEF(); return `strip.setPixelColor(${v(b, 'IDX', '0')}, neopixel.colors(NeoPixelColors.${b.getFieldValue('COLOR')}))\nstrip.show()\n`; });
   j('mq_rgb_pixel_rgb', (b) => { RGB_DEF(); return `strip.setPixelColor(${v(b, 'IDX', '0')}, neopixel.rgb(${v(b, 'R', '0')}, ${v(b, 'G', '0')}, ${v(b, 'B', '0')}))\nstrip.show()\n`; });
@@ -183,7 +225,7 @@
   };
   const NP = () => { use('neopixel'); PY.definitions_['zz_np'] = 'np = neopixel.NeoPixel(pin15, 4)\nnp_brightness = 255'; PY.definitions_['zz_np_fn'] = 'def np_color(c):\n    return tuple(int(x * np_brightness / 255) for x in c)'; };
   const MOTOR_PY = { All: 'maqueen.ALL', M1: 'maqueen.M1', M2: 'maqueen.M2' };
-  ['mb_on_start', 'mb_forever', 'mb_on_button', 'mb_on_shake', 'mq_on_ir'].forEach((t) => p(t, () => ''));
+  ['mb_on_start', 'mb_forever', 'mb_on_button', 'mb_on_shake', 'mq_on_ir', 'mq_lt_event'].forEach((t) => p(t, () => ''));
   p('mb_show_number', (b) => `display.scroll(${pv(b, 'NUM', '0')})\n`);
   p('mb_show_string', (b) => `display.scroll(${pv(b, 'TEXT', "''")})\n`);
   p('mb_show_icon', (b) => `display.show(Image.${b.getFieldValue('ICON')})\nsleep(600)\n`);
@@ -225,6 +267,28 @@
   p('mq_write_led', (b) => { use('maqueen'); return `maqueen.write_led(maqueen.${b.getFieldValue('LED') === 'LEDLeft' ? 'LEFT' : 'RIGHT'}, maqueen.${b.getFieldValue('STATE') === 'turnOn' ? 'ON' : 'OFF'})\n`; });
   p('mq_servo', (b) => { use('maqueen'); return `maqueen.servo_run(maqueen.${b.getFieldValue('SERVO')}, ${pv(b, 'ANGLE', '90')})\n`; });
   p('mq_ir_value', () => { use('maqueen'); return ['maqueen.ir_read()', PO.FUNCTION_CALL]; });
+  p('mq_motor_stop_all', () => { use('maqueen'); return 'maqueen.motor_stop_all()\n'; });
+  p('mq_version', () => { use('maqueen'); return ['maqueen.version()', PO.FUNCTION_CALL]; });
+  // V5
+  const v5 = () => use('maqueen_v5');
+  const V5SIDE = { Left: 'maqueen_v5.LEFT', Right: 'maqueen_v5.RIGHT', All: 'maqueen_v5.BOTH' };
+  const V5COL = (b) => 'maqueen_v5.' + { Red: 'RED', Green: 'GREEN', Yellow: 'YELLOW', Blue: 'BLUE', Purple: 'PURPLE', Cyan: 'CYAN', White: 'WHITE', Black: 'BLACK' }[b.getFieldValue('COLOR')];
+  const V5MOT = { All: 'maqueen_v5.ALL', M1: 'maqueen_v5.M1', M2: 'maqueen_v5.M2' };
+  p('mq5_init', () => { v5(); return 'maqueen_v5.init()\n'; });
+  p('mq5_patrolling', (b) => { v5(); return `maqueen_v5.line_patrol(${b.getFieldValue('ONOFF') === 'ON' ? 'True' : 'False'})\n`; });
+  p('mq5_motor_run', (b) => { v5(); return `maqueen_v5.motor_run(${V5MOT[b.getFieldValue('MOTOR')]}, maqueen_v5.${b.getFieldValue('DIR')}, ${pv(b, 'SPEED', '0')})\n`; });
+  p('mq5_motor_stop', (b) => { v5(); return `maqueen_v5.motor_stop(${V5MOT[b.getFieldValue('MOTOR')]})\n`; });
+  p('mq5_ultrasonic', () => { v5(); return ['maqueen_v5.ultrasonic()', PO.FUNCTION_CALL]; });
+  p('mq5_read_patrol', (b) => { v5(); return [`maqueen_v5.read_patrol(maqueen_v5.${b.getFieldValue('PATROL')})`, PO.FUNCTION_CALL]; });
+  p('mq5_read_patrol_data', (b) => { v5(); return [`maqueen_v5.read_patrol_data(maqueen_v5.${b.getFieldValue('PATROL')})`, PO.FUNCTION_CALL]; });
+  p('mq5_servo', (b) => { v5(); return `maqueen_v5.servo_run(maqueen_v5.${b.getFieldValue('SERVO')}, ${pv(b, 'ANGLE', '90')})\n`; });
+  p('mq5_rgb', (b) => { v5(); return `maqueen_v5.set_rgb_light(${V5SIDE[b.getFieldValue('TYPE')]}, ${V5COL(b)})\n`; });
+  p('mq5_rgb_blink', (b) => { v5(); return `maqueen_v5.rgb_blink(${V5SIDE[b.getFieldValue('TYPE')]}, ${pv(b, 'NUM', '3')}, ${b.getFieldValue('GRADE')}, ${V5COL(b)})\n`; });
+  p('mq5_rgb_change', (b) => { v5(); return `maqueen_v5.rgb_gradient(${V5SIDE[b.getFieldValue('TYPE')]}, ${b.getFieldValue('GRADE')})\n`; });
+  p('mq5_rgb_off', (b) => { v5(); return `maqueen_v5.rgb_off(${V5SIDE[b.getFieldValue('TYPE')]})\n`; });
+  p('mq5_light', (b) => { v5(); return [`maqueen_v5.read_light(${V5SIDE[b.getFieldValue('TYPE')]})`, PO.FUNCTION_CALL]; });
+  p('mq5_battery', (b) => { v5(); return [`maqueen_v5.battery(maqueen_v5.${b.getFieldValue('BATT') === 'Lithium' ? 'LITHIUM' : 'ALKALINE'})`, PO.FUNCTION_CALL]; });
+  p('mq5_version', () => { v5(); return ['maqueen_v5.version()', PO.FUNCTION_CALL]; });
   const col = (b) => `(${COLOR_RGB[b.getFieldValue('COLOR')].join(', ')})`;
   p('mq_rgb_all', (b) => { NP(); return `np.fill(np_color(${col(b)}))\nnp.show()\n`; });
   p('mq_rgb_pixel', (b) => { NP(); return `np[${pv(b, 'IDX', '0')}] = np_color(${col(b)})\nnp.show()\n`; });
@@ -268,6 +332,12 @@
         const bd = body(), name = `on_ir_received${hn++ || ''}`;
         handlers.push(`def ${name}():\n${globalsFor(bd)}${bd}`);
         checks.push(`    if maqueen.ir_available():\n        ${name}()`);
+      } else if (b.type === 'mq_lt_event') {
+        use('maqueen');
+        const side = b.getFieldValue('SIDE') === 'PatrolLeft' ? 'LEFT' : 'RIGHT';
+        const bd = body(), name = `on_line_${side.toLowerCase()}_${b.getFieldValue('VI').toLowerCase()}${hn++ || ''}`;
+        handlers.push(`def ${name}():\n${globalsFor(bd)}${bd}`);
+        checks.push(`    if maqueen.read_patrol(maqueen.${side}) == ${b.getFieldValue('VI') === 'High' ? 1 : 0}:\n        ${name}()`);
       } else if (b.type === 'procedures_defnoreturn' || b.type === 'procedures_defreturn') continue;
       else start.push(code);
     }
@@ -312,18 +382,41 @@
     <block type="mb_compass"></block>
     <block type="mb_running_time"></block>
   </category>
-  <category name="마퀸" colour="${C.maqueen}">
+  <category name="마퀸 V4" colour="${C.maqueen}">
     <label text="모터"></label>
-    <block type="mq_motor_run"><field name="DIR">CW</field>${sh('SPEED', 150)}</block>
-    <block type="mq_motor_stop"></block>
+    <block type="mq_motor_run"><field name="MOTOR">All</field><field name="DIR">CW</field>${sh('SPEED', 150)}</block>
+    <block type="mq_motor_stop"><field name="MOTOR">All</field></block>
+    <block type="mq_motor_stop_all"></block>
     <label text="센서"></label>
     <block type="mq_ultrasonic"></block>
     <block type="mq_read_patrol"></block>
-    <label text="LED / 서보 / IR"></label>
+    <block type="mq_lt_event"></block>
+    <label text="LED / 서보 / 적외선"></label>
     <block type="mq_write_led"></block>
     <block type="mq_servo">${sh('ANGLE', 90)}</block>
     <block type="mq_on_ir"></block>
     <block type="mq_ir_value"></block>
+    <block type="mq_version"></block>
+  </category>
+  <category name="마퀸 V5" colour="${C.v5}">
+    <block type="mq5_init"></block>
+    <block type="mq5_patrolling"></block>
+    <label text="모터 / 서보"></label>
+    <block type="mq5_motor_run"><field name="MOTOR">All</field>${sh('SPEED', 150)}</block>
+    <block type="mq5_motor_stop"><field name="MOTOR">All</field></block>
+    <block type="mq5_servo">${sh('ANGLE', 90)}</block>
+    <label text="센서"></label>
+    <block type="mq5_ultrasonic"></block>
+    <block type="mq5_read_patrol"></block>
+    <block type="mq5_read_patrol_data"></block>
+    <block type="mq5_light"></block>
+    <block type="mq5_battery"></block>
+    <label text="RGB 자동차 조명"></label>
+    <block type="mq5_rgb"><field name="TYPE">All</field></block>
+    <block type="mq5_rgb_blink"><field name="TYPE">All</field>${sh('NUM', 3)}</block>
+    <block type="mq5_rgb_change"><field name="TYPE">All</field></block>
+    <block type="mq5_rgb_off"><field name="TYPE">All</field></block>
+    <block type="mq5_version"></block>
   </category>
   <category name="RGB LED" colour="${C.rgb}">
     <block type="mq_rgb_all"></block>

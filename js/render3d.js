@@ -70,7 +70,7 @@
       this.beamDot = new THREE.Mesh(new THREE.SphereGeometry(0.6, 10, 10), new THREE.MeshBasicMaterial({ color: 0x00e5ff }));
       this.scene.add(this.beamDot);
       // 라인센서 점
-      this.lineDots = [0, 1].map(() => {
+      this.lineDots = [0, 1, 2].map(() => {
         const m = new THREE.Mesh(new THREE.CircleGeometry(0.45, 14), new THREE.MeshBasicMaterial({ color: 0xff3333, transparent: true, opacity: 0.85, depthWrite: false }));
         m.rotation.x = -Math.PI / 2; this.scene.add(m); return m;
       });
@@ -93,6 +93,17 @@
       this.setupDrag();
       this.resize();
       new ResizeObserver(() => this.resize()).observe(container);
+    }
+
+    applyModel(m) {
+      this._model = m;
+      const p = this.parts, v5 = m === 'v5';
+      p.redLeds.forEach((o) => { o.group.visible = !v5; if (v5) o.glow.visible = false; });
+      p.carLights.forEach((c) => { c.group.visible = v5; if (!v5) c.glow.visible = false; });
+      p.pcbMat.map = v5 ? p.pcbTex.v5 : p.pcbTex.v4; p.pcbMat.needsUpdate = true;
+      const off = v5 ? [-MQ.ROBOT.LINE_Y5, 0, MQ.ROBOT.LINE_Y5] : [-MQ.ROBOT.LINE_Y, 0, MQ.ROBOT.LINE_Y];
+      p.lineSens.forEach((s, i) => { s.position.z = off[i]; s.visible = v5 || i !== 1; });
+      p.lineLeds.forEach((s, i) => { s.visible = v5 || i !== 1; });
     }
 
     resize() {
@@ -239,7 +250,7 @@
       p.btnA.material.color.set(hw.buttons.A ? 0xffcc00 : 0x333333);
       p.btnB.material.color.set(hw.buttons.B ? 0xffcc00 : 0x333333);
       // 빨간 LED
-      p.redLeds.forEach((o, i) => {
+      if (robot.model !== 'v5') p.redLeds.forEach((o, i) => {
         const v = hw.redLeds[i];
         o.led.material.emissive.setRGB(v, 0, 0);
         o.led.material.color.set(v ? 0xff3030 : 0x661111);
@@ -254,15 +265,30 @@
         sr += r; sg += gg; sb += b;
       });
       p.underGlow.material.color.setRGB(Math.min(1, sr / 2.2), Math.min(1, sg / 2.2), Math.min(1, sb / 2.2));
+      // 모델(V4/V5) 차이 반영
+      if (this._model !== robot.model) this.applyModel(robot.model);
+      const nS = robot.lineOffsets().length;
       // 라인센서 표시 LED (흰 바닥에서 켜짐)
-      [0, 1].forEach((i) => {
+      [0, 1, 2].forEach((i) => {
+        if (i >= nS) { this.lineDots[i].visible = false; return; }
         const black = robot.lineSensor(i);
-        p.lineLeds[i].material.color.set(black ? 0x0a2a55 : 0x40a0ff);
+        const ind = p.lineLeds[nS === 2 ? i * 2 : i];
+        ind.material.color.set(black ? 0x0a2a55 : 0x40a0ff);
         const [x, y] = robot.lineSensorPos(i);
         this.lineDots[i].position.set(x, 0.08, y);
         this.lineDots[i].material.color.set(black ? 0x00e676 : 0xff3333);
         this.lineDots[i].visible = this.showSensors;
       });
+      // V5 RGB 자동차 조명
+      if (robot.model === 'v5') {
+        p.carLights.forEach((c, i) => {
+          const [r, g, b] = hw.carLightRGB(i);
+          const on = r + g + b > 0;
+          c.lensMat.color.setRGB(on ? 0.6 + 0.4 * r / 255 : 0.95, on ? 0.6 + 0.4 * g / 255 : 0.95, on ? 0.6 + 0.4 * b / 255 : 0.95);
+          c.lensMat.emissive.setRGB(r / 255, g / 255, b / 255);
+          c.glow.visible = on; c.glow.material.color.setRGB(r / 255, g / 255, b / 255);
+        });
+      }
       // 서보 혼
       hw.servos.forEach((a, i) => { p.servoHorns[i].rotation.y = ((a - 90) * Math.PI) / 180; });
 

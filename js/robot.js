@@ -7,6 +7,7 @@
     BODY_R: 4.6,         // 충돌 반경
     BODY_OFS: 1.0,       // 차축 기준 몸체 중심 전방 오프셋
     LINE_X: 3.6, LINE_Y: 0.9, // 라인센서 위치 (전방, 좌우)
+    LINE_Y5: 1.3,        // V5 좌/우 센서 오프셋 (가운데 M 센서 기준)
     US_X: 4.8, US_H: 4.2, // 초음파 센서 위치/높이
     MAXV: 28,            // 속도 255 일 때 바퀴 선속도 (cm/s)
     DEADZONE: 20,        // 이 값 미만 PWM 에서는 바퀴가 돌지 않음
@@ -23,6 +24,7 @@
       this.floorData = null;
       this.bumping = false;
       this.odo = 0;
+      this.model = 'v4';
     }
     setMap(map, floorPixels) {
       this.map = map;
@@ -123,12 +125,17 @@
       }
       return sum / n;
     }
-    // 라인센서: 검은색(반사 없음)=1, 흰색=0
-    lineSensor(side) {
-      const [x, y] = this.toWorld(R.LINE_X, side === 0 ? -R.LINE_Y : R.LINE_Y);
-      return this.floorLum(x, y) < 100 ? 1 : 0;
+    // 라인센서 좌우 오프셋 목록 (V4: 왼쪽/오른쪽, V5: L/M/R)
+    lineOffsets() { return this.model === 'v5' ? [-R.LINE_Y5, 0, R.LINE_Y5] : [-R.LINE_Y, R.LINE_Y]; }
+    // 라인센서: 검은색(반사 없음)=1, 흰색=0.  V4: side 0=왼쪽,1=오른쪽 / V5: 0=L,1=M,2=R
+    lineSensor(side) { return this.lineLum(side) < 100 ? 1 : 0; }
+    // V4 핀(P13/P14) 기준 왼쪽/오른쪽 센서
+    lineLR(side) { return this.lineSensor(this.model === 'v5' ? (side ? 2 : 0) : side); }
+    lineLum(side) {
+      const [x, y] = this.lineSensorPos(side);
+      return this.floorLum(x, y);
     }
-    lineSensorPos(side) { return this.toWorld(R.LINE_X, side === 0 ? -R.LINE_Y : R.LINE_Y); }
+    lineSensorPos(side) { const o = this.lineOffsets(); return this.toWorld(R.LINE_X, o[Math.max(0, Math.min(o.length - 1, side))]); }
     // 초음파: 전방 ±15° 원뿔 안에서 가장 가까운 물체까지 거리(cm). 감지 실패 시 -1
     ultrasonicRaw() {
       const [sx, sy] = this.toWorld(R.US_X, 0);

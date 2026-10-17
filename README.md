@@ -8,9 +8,9 @@ micro:bit 마퀸(DFRobot Maqueen, ROB0148) 로봇을 **MakeCode 블록 · MakeCo
 
 - **코딩 스페이스 / 시뮬레이션 영역 분할 화면** (가운데 분할 바로 크기 조절)
 - **3가지 코딩 방식**
-  - 🧩 MakeCode 스타일 블록 (기본 · 입력 · 마퀸 · RGB LED · 음악 · LED · 반복 · 논리 · 변수 · 계산 · 함수 · 핀 · 시리얼)
-  - `{ }` MakeCode JavaScript (`basic`, `input`, `led`, `music`, `pins`, `serial`, `maqueen`, `neopixel` API)
-  - 🐍 MicroPython (`microbit`, `maqueen`, `music`, `neopixel`, `machine`, `utime` 모듈)
+  - 🧩 MakeCode 스타일 블록 (기본 · 입력 · 마퀸 V4 · 마퀸 V5 · RGB LED · 음악 · LED · 반복 · 논리 · 변수 · 계산 · 함수 · 핀 · 시리얼)
+  - `{ }` MakeCode JavaScript (`basic`, `input`, `led`, `music`, `pins`, `serial`, `maqueen`, `Maqueen_V5`, `neopixel` API)
+  - 🐍 MicroPython (`microbit`, `maqueen`, `maqueen_v5`, `music`, `neopixel`, `machine`, `utime` 모듈)
   - 블록 → JavaScript / MicroPython 자동 변환 및 미리보기
 - **마퀸 기본 모델의 모든 부품 시뮬레이션**
   - N20 모터 2개 (I2C 0x10, 차동 구동 물리 모델, 응답 지연·데드존 반영)
@@ -18,11 +18,15 @@ micro:bit 마퀸(DFRobot Maqueen, ROB0148) 로봇을 **MakeCode 블록 · MakeCo
   - 초음파 센서 (P1 Trig / P2 Echo, ±15° 빔 레이캐스트, `time_pulse_us` 지원)
   - 빨간 LED 2개 (P8/P12), RGB 네오픽셀 4개 (P15), 부저 (P0), IR 수신기 + 가상 리모컨, 서보 S1/S2
   - micro:bit 5×5 LED, 버튼 A/B/A+B, 흔들기, 빛·온도·가속도·나침반(로봇 방향 연동) 센서, 시리얼 콘솔
+- **마퀸 V4 / V5 확장 지원** (시뮬레이터 상단에서 로봇 모델 선택)
+  - V4: MakeCode `maqueen` 확장 전체 (모터, 모든 모터 정지, 초음파, 라인 센서, 라인 센서 이벤트, LED등, 서보, 적외선, 제품 정보)
+  - V5: MakeCode `Maqueen_V5` 확장 전체 (I2C 초기화, 내장 라인 트레이싱, 모터, 초음파, 라인 센서 L/M/R 상태·ADC, 서보, RGB 자동차 조명 색상·깜박임·그라데이션·끄기, 광센서, 배터리 잔량, 버전)
+  - 블록 문구는 pxt-maqueen 공식 한국어 번역과 동일하며, MicroPython `maqueen` / `maqueen_v5` 모듈은 실제 보드와 같은 I2C 레지스터로 동작
 - **센서 · 장치 상태창**: 라인 센서 L/R, 초음파 거리 게이지, 모터 방향·속도, LED, RGB, 서보, 부저, 나침반, IR, 속도, 위치 실시간 표시 + 3D 화면 HUD
 - **15개 주행 공간**
   - 공간: 개활지, 장애물 공간, 격벽 공간(방과 통로), 미로 7×7, 미로 10×10, ㄹ자 복도
   - 라인트레이싱: 타원, 8자(교차로), 사각(직각 코너), 곡선, 물결, 지그재그, 라인+장애물, 스모 링, 격자 도로
-- **38개 예제**: micro:bit 기본, 마퀸 부품별 실습, 초음파 주행 응용(장애물 회피·거리 유지·미로 탈출 등), 라인트레이싱, MicroPython 직접 제어, MakeCode JavaScript
+- **47개 예제** (마퀸 V5 예제 8개 포함): micro:bit 기본, 마퀸 부품별 실습, 초음파 주행 응용(장애물 회피·거리 유지·미로 탈출 등), 라인트레이싱, MicroPython 직접 제어, MakeCode JavaScript
 - 카메라(자유 · 위 · 추적 · 1인칭), 시뮬레이션 속도(½×~4×), 초음파 빔·주행 궤적 표시, 로봇 드래그 이동/회전
 - 작업 자동 저장(브라우저) 및 프로젝트 파일 저장/불러오기 (`.json`, `.py`, `.js`)
 
@@ -49,6 +53,19 @@ python -m http.server 8000
 | IR 수신기 | P16 | |
 | 서보 S1 / S2 | I2C 0x10 | 레지스터 0x14 / 0x15 ← [각도] |
 
+## 마퀸 V5 (I2C 0x10 레지스터)
+
+| 기능 | 레지스터 | 비고 |
+|---|---|---|
+| 라인 센서 L / M / R 상태 | 29 | bit2 / bit1 / bit0 (검은 선 = 1) |
+| 라인 센서 ADC L / M / R | 32 / 34 / 36 | 2바이트 |
+| RGB 자동차 조명 왼쪽 / 오른쪽 | 11 / 12 | 1 빨강, 2 초록, 3 노랑, 4 파랑, 5 보라, 6 청록, 7 흰색, 8 끄기 |
+| 깜박임 횟수·속도 / 그라데이션 | 13~16 / 17~18 | 속도 1~5 |
+| 서보 S1 / S2 | 20 / 21 | 각도 |
+| 광센서 왼쪽 / 오른쪽 | 41 / 43 | 0~1023 |
+| 배터리 종류 / 잔량 | 45 / 46 | 0~100 % |
+| 내장 라인 트레이싱 | 71 | 1 켜기 / 0 끄기 |
+
 ## 구조
 
 ```
@@ -58,7 +75,8 @@ js/assets.js        5x5 폰트, 아이콘, 멜로디
 js/world.js         주행 공간(맵) 정의
 js/robot.js         로봇 물리 모델과 센서
 js/hardware.js      시뮬레이션 시계, micro:bit/마퀸 하드웨어 상태, 소리
-js/render3d.js      Three.js 3D 렌더링과 로봇 모델
+js/robotModel.js    마퀸 3D 모델 (V4/V5)
+js/render3d.js      Three.js 3D 렌더링, 카메라
 js/jsrt.js          MakeCode JavaScript 실행기 (acorn 으로 async 변환)
 js/pyrt.js          MicroPython 실행기 (Skulpt) 와 파이썬 모듈
 js/blocks.js        Blockly 블록 정의, JavaScript/MicroPython 코드 생성

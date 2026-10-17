@@ -420,6 +420,136 @@ def servo_run(servo, angle):
     angle = max(0, min(180, int(angle)))
     i2c.write(I2C_ADDR, bytearray([0x14 if servo == S1 else 0x15, angle]))
 
+def motor_stop_all():
+    motor_run(ALL, CW, 0)
+
+def ir_read():
+    return _hw.hwcall('ir_read')
+
+def ir_available():
+    return _hw.hwcall('ir_new')
+
+def version():
+    i2c.write(I2C_ADDR, bytearray([50]))
+    n = i2c.read(I2C_ADDR, 1)[0]
+    i2c.write(I2C_ADDR, bytearray([51]))
+    return ''.join([chr(c) for c in i2c.read(I2C_ADDR, n)])
+`;
+
+  const MAQUEEN_V5_PY = `
+# 마퀸 V5 제어 라이브러리 - MakeCode Maqueen_V5 확장과 같은 I2C 레지스터를 사용합니다.
+from microbit import i2c, pin1, pin2, sleep
+import machine
+import utime
+import _hw
+
+I2C_ADDR = 0x10
+M1 = 0          # 왼쪽 모터
+M2 = 1          # 오른쪽 모터
+ALL = 2
+CW = 0          # 정회전(전진)
+CCW = 1         # 역회전(후진)
+S1 = 0
+S2 = 1
+L = 1           # 라인 센서
+M = 2
+R = 3
+LEFT = 0        # 자동차 조명 / 광센서
+RIGHT = 1
+BOTH = 2
+RED = 1
+GREEN = 2
+YELLOW = 3
+BLUE = 4
+PURPLE = 5
+CYAN = 6
+WHITE = 7
+BLACK = 8       # 끄기
+ALKALINE = 1
+LITHIUM = 0
+
+def _w(reg, val):
+    i2c.write(I2C_ADDR, bytearray([reg, val]))
+
+def _r(reg, n):
+    i2c.write(I2C_ADDR, bytearray([reg]))
+    return i2c.read(I2C_ADDR, n)
+
+def init():
+    _w(0x46, 1)
+    sleep(100)
+
+def line_patrol(on):
+    _w(71, 1 if on else 0)
+
+def motor_run(motor, direction, speed):
+    speed = max(0, min(255, int(speed)))
+    if motor == M1 or motor == ALL:
+        i2c.write(I2C_ADDR, bytearray([0, direction, speed]))
+    if motor == M2 or motor == ALL:
+        i2c.write(I2C_ADDR, bytearray([2, direction, speed]))
+
+def motor_stop(motor=ALL):
+    motor_run(motor, CW, 0)
+
+def motor_stop_all():
+    motor_run(ALL, CW, 0)
+
+def ultrasonic():
+    pin1.write_digital(1)
+    utime.sleep_us(10)
+    pin1.write_digital(0)
+    t = machine.time_pulse_us(pin2, 1, 500 * 58)
+    if t <= 0:
+        return 500
+    return round(t / 59)
+
+def read_patrol(sensor):
+    state = _r(29, 1)[0]
+    return 1 if state & (1 << (3 - sensor)) else 0
+
+def read_patrol_data(sensor):
+    reg = {L: 32, M: 34, R: 36}[sensor]
+    b = _r(reg, 2)
+    return (b[0] << 8) | b[1]
+
+def servo_run(servo, angle):
+    _w(21 if servo == S2 else 20, max(0, min(180, int(angle))))
+
+def set_rgb_light(side, color):
+    if side != RIGHT:
+        _w(11, color)
+    if side != LEFT:
+        _w(12, color)
+
+def rgb_blink(side, number, grade, color):
+    if side != RIGHT:
+        _w(11, color); _w(14, grade); _w(13, number)
+    if side != LEFT:
+        _w(12, color); _w(16, grade); _w(15, number)
+
+def rgb_gradient(side, grade):
+    if side != RIGHT:
+        _w(17, grade)
+    if side != LEFT:
+        _w(18, grade)
+
+def rgb_off(side=BOTH):
+    set_rgb_light(side, BLACK)
+
+def read_light(side):
+    b = _r(41 if side == LEFT else 43, 2)
+    return (b[0] << 8) | b[1]
+
+def battery(kind=ALKALINE):
+    _w(45, kind)
+    sleep(50)
+    return min(100, _r(46, 1)[0])
+
+def version():
+    n = _r(50, 1)[0]
+    return ''.join([chr(c) for c in _r(51, n)])
+
 def ir_read():
     return _hw.hwcall('ir_read')
 
@@ -437,6 +567,7 @@ def ir_available():
       'src/lib/time.py': TIME_PY,
       'src/lib/machine.py': MACHINE_PY,
       'src/lib/maqueen.py': MAQUEEN_PY,
+      'src/lib/maqueen_v5.py': MAQUEEN_V5_PY,
       'src/lib/_hw.js': 'var $builtinmodule = ' + nativeModule.toString().replace(/^function nativeModule/, 'function'),
     };
   }
@@ -449,6 +580,11 @@ def ir_available():
     const bf = (Sk.builtinFiles = Sk.builtinFiles || { files: {} });
     delete bf.files['src/lib/time.js'];
     Object.assign(bf.files, f);
+    // Skulpt 의 주기적 양보(Sk.yield)를 setTimeout 대신 MessageChannel 로:
+    // 백그라운드 탭에서 타이머가 느려져도 파이썬 반복문이 지연되지 않도록
+    const ch = new MessageChannel(), q = [];
+    ch.port1.onmessage = () => { const fn = q.shift(); fn && fn(); };
+    Sk.global.setImmediate = (fn) => { q.push(fn); ch.port2.postMessage(0); };
   }
 
   function readFile(x) {
@@ -468,11 +604,31 @@ def ir_available():
     return String((e && e.message) || e);
   }
 
+  // 모듈 미리 불러오기: Skulpt 는 첫 import 도중 양보(suspension)가 일어나면
+  // `import x as y` 의 별칭이 사라지는 문제가 있어, 시작 시 한 번 컴파일해 캐시해 둔다.
+  let warm = null;
+  function warmup() {
+    if (warm) return warm;
+    install();
+    Sk.configure({ output: () => {}, read: readFile, __future__: Sk.python3, yieldLimit: null, execLimit: null });
+    if (!Sk.builtins.bytearray) Sk.builtins.bytearray = Sk.builtins.list;
+    warm = Sk.misceval.asyncToPromise(() => Sk.importMainWithBody('<warmup>', false,
+      'import microbit, music, neopixel, machine, utime, time, maqueen, maqueen_v5, random, math', true))
+      .catch((e) => console.warn('python warmup', e));
+    return warm;
+  }
+
   MQ.pyrt = {
+    warmup,
     run(code, { onError, onDone }) {
-      install();
       const c = { stopped: false };
       ctx = c;
+      warmup().then(() => { if (!c.stopped) start(c, code, onError, onDone); });
+      return { stop() { c.stopped = true; if (ctx === c) ctx = null; } };
+    },
+  };
+  function start(c, code, onError, onDone) {
+    {
       Sk.configure({
         output: (t) => hw.serialWrite(t),
         read: readFile,
@@ -492,7 +648,6 @@ def ir_available():
           if (e && e.isStop) return;
           onError(new Error(fmtError(e)));
         });
-      return { stop() { c.stopped = true; if (ctx === c) ctx = null; } };
-    },
-  };
+    }
+  }
 })();

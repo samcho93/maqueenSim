@@ -42,7 +42,7 @@
     s.quadraticCurveTo(-3.7, -3.05, -3.0, -3.05);
     return s;
   }
-  function pcbTexture() {
+  function pcbTexture(ver) {
     const W = PCB.maxX - PCB.minX, H = PCB.maxY - PCB.minY, S = 140; // px/cm
     return canvasTex(Math.round(W * S), Math.round(H * S), (g, cw, ch) => {
       // 로봇 좌표 (x, z) -> 캔버스 px
@@ -71,10 +71,10 @@
       g.beginPath(); g.moveTo(...P(2.7, -3.75)); g.lineTo(...P(3.95, -3.75)); g.lineTo(...P(4.95, -2.45)); g.lineTo(...P(4.95, 2.45)); g.lineTo(...P(3.95, 3.75)); g.lineTo(...P(2.7, 3.75)); g.stroke();
       // 로고/모델명 (뒤쪽, 배터리 홀더 옆에 비스듬히 보이는 부분)
       text('DFRobot', -3.25, 0, 0.42, -Math.PI / 2, '#f2f2f2', true);
-      text('micro:Maqueen V4.0', 1.75, 0, 0.24, 0, '#f2f2f2');
+      text(`micro:Maqueen ${ver}`, 1.75, 0, 0.24, 0, '#f2f2f2');
       // 부품 라벨
-      text('P8', 3.55, -3.2, 0.3, 0, '#f2f2f2', true);
-      text('P12', 3.55, 3.2, 0.3, 0, '#f2f2f2', true);
+      text(ver === 'V5.0' ? 'RGB-L' : 'P8', 3.55, -3.2, 0.26, 0, '#f2f2f2', true);
+      text(ver === 'V5.0' ? 'RGB-R' : 'P12', 3.55, 3.2, 0.26, 0, '#f2f2f2', true);
       text('RGB P15', 4.55, -1.6, 0.2, Math.PI / 2, '#f2f2f2');
       text('P13', 4.75, -0.65, 0.18, 0, '#f2f2f2');
       text('P14', 4.75, 0.65, 0.18, 0, '#f2f2f2');
@@ -221,10 +221,11 @@
     // 메인 PCB
     const pcbGeo = new THREE.ExtrudeGeometry(pcbShape(), { depth: T, bevelEnabled: false, curveSegments: 12 });
     pcbGeo.rotateX(-Math.PI / 2);
-    const tex = pcbTexture();
     const W = PCB.maxX - PCB.minX, H = PCB.maxY - PCB.minY;
-    tex.repeat.set(1 / W, 1 / H); tex.offset.set(-PCB.minX / W, -PCB.minY / H);
-    const pcbTop = phys({ map: tex, roughness: 0.38, metalness: 0.05, clearcoat: 0.7, clearcoatRoughness: 0.2 });
+    const mkTex = (v) => { const t = pcbTexture(v); t.repeat.set(1 / W, 1 / H); t.offset.set(-PCB.minX / W, -PCB.minY / H); return t; };
+    parts.pcbTex = { v4: mkTex('V4.0'), v5: mkTex('V5.0') };
+    const pcbTop = phys({ map: parts.pcbTex.v4, roughness: 0.38, metalness: 0.05, clearcoat: 0.7, clearcoatRoughness: 0.2 });
+    parts.pcbMat = pcbTop;
     const pcbEdge = std(0x2b2a22, { roughness: 0.7 });
     const pcb = new THREE.Mesh(pcbGeo, [pcbTop, pcbEdge]);
     pcb.position.y = 2.35; pcb.castShadow = true; pcb.receiveShadow = true;
@@ -258,13 +259,13 @@
     [[3.9, -2.9], [3.9, 2.9], [-2.9, -2.35], [-2.9, 2.35]].forEach(([x, z]) => { const sc = screw(M); sc.position.set(x, TOP + 0.08, z); g.add(sc); });
 
     // 라인 센서 (하부) + 상단 표시 LED
-    parts.lineLeds = [];
-    [-1, 1].forEach((s) => {
+    parts.lineLeds = []; parts.lineSens = [];
+    [-1, 0, 1].forEach((s) => {
       const sens = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.35, 0.45), M.blackPlastic);
-      sens.position.set(R.LINE_X + 0.8, 2.15, s * (R.LINE_Y + 0.1)); g.add(sens);
+      sens.position.set(R.LINE_X + 0.8, 2.15, s * R.LINE_Y); g.add(sens);
       const ind = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.16), new THREE.MeshBasicMaterial({ color: 0x0a2a55 }));
       ind.position.set(4.45, TOP + 0.05, s * 0.9); g.add(ind);
-      parts.lineLeds.push(ind);
+      parts.lineLeds.push(ind); parts.lineSens.push(sens);
     });
 
     // 초음파 센서 HC-SR04 (4핀 헤더에 세로로 장착, 정면 = +x)
@@ -305,7 +306,18 @@
       g.add(led);
       const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xff2020, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
       glow.scale.set(2.4, 2.4, 1); glow.position.set(3.9, TOP + 0.5, s * 3.35); glow.visible = false; g.add(glow);
-      parts.redLeds.push({ led: { material: mat }, glow });
+      parts.redLeds.push({ led: { material: mat }, glow, group: led });
+    });
+    // V5: RGB 자동차 조명 (빨간 LED 자리)
+    parts.carLights = [-1, 1].map((s) => {
+      const grp = new THREE.Group();
+      const pkg = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.3, 0.7), M.whitePlastic); pkg.position.y = 0.15; grp.add(pkg);
+      const lensMat = phys({ color: 0xf4f4f4, roughness: 0.25, clearcoat: 1, emissive: 0x000000 });
+      const lens = new THREE.Mesh(new THREE.SphereGeometry(0.3, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), lensMat); lens.position.y = 0.3; grp.add(lens);
+      grp.position.set(3.9, TOP, s * 3.35); grp.visible = false; g.add(grp);
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+      glow.scale.set(3, 3, 1); glow.position.set(3.95, TOP + 0.45, s * 3.35); glow.visible = false; g.add(glow);
+      return { group: grp, lensMat, glow };
     });
 
     // RGB LED 4개 (상면 모서리 흰색 5050 패키지)

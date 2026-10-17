@@ -5,7 +5,7 @@
   const hw = MQ.hw, clock = MQ.clock;
   const STORE = 'maqueenSim.v1';
 
-  const state = { mode: 'blocks', running: null, speed: 1, mapId: 'open', jsDirty: false, pyDirty: false, previewLang: 'js', exampleId: null };
+  const state = { mode: 'blocks', model: 'v4', running: null, speed: 1, mapId: 'open', jsDirty: false, pyDirty: false, previewLang: 'js', exampleId: null };
 
   // ---------- 토스트 ----------
   let toastT;
@@ -106,7 +106,7 @@
   // ---------- 저장 ----------
   let loading = false;
   function snapshot() {
-    return { v: 1, mode: state.mode, map: state.mapId, blocks: Blockly.Xml.domToText(Blockly.Xml.workspaceToDom(ws)), js: jsEd.getValue(), py: pyEd.getValue(), jsDirty: state.jsDirty, pyDirty: state.pyDirty };
+    return { v: 1, mode: state.mode, model: state.model, map: state.mapId, blocks: Blockly.Xml.domToText(Blockly.Xml.workspaceToDom(ws)), js: jsEd.getValue(), py: pyEd.getValue(), jsDirty: state.jsDirty, pyDirty: state.pyDirty };
   }
   function save() { if (loading) return; try { localStorage.setItem(STORE, JSON.stringify(snapshot())); } catch (e) { /* 저장 불가 환경 */ } }
   function restore(data) {
@@ -117,6 +117,7 @@
       jsEd.setValue(data.js || genJs()); pyEd.setValue(data.py || genPy());
       state.jsDirty = !!data.jsDirty; state.pyDirty = !!data.pyDirty;
       if (data.map) loadMap(data.map);
+      setModel(data.model || 'v4');
       setMode(data.mode || 'blocks', { silent: true });
     } finally { loading = false; }
     save();
@@ -196,12 +197,31 @@
       state.jsDirty = !!ex.js; state.pyDirty = !!ex.py;
     } finally { loading = false; }
     if (ex.map) loadMap(ex.map);
+    setModel(ex.model || 'v4');
     if (ex.pose) { robot.setPose(ex.pose.x, ex.pose.y, (ex.pose.a * Math.PI) / 180); view.clearTrail(); }
     setMode(ex.mode || 'blocks', { silent: true });
     $('#exampleSel').value = id;
     showExampleInfo(ex);
     serialAppend(`── 예제 불러옴: ${ex.name} ──\n`, 'sys');
   }
+
+  // ---------- 로봇 모델 (V4 / V5) ----------
+  function setModel(m) {
+    m = m === 'v5' ? 'v5' : 'v4';
+    state.model = m;
+    hw.setModel(m);
+    $('#modelSel').value = m;
+    document.body.classList.toggle('model-v5', m === 'v5');
+    $('#stLineBox').classList.toggle('three', m === 'v5');
+    $('#stLine1').hidden = m !== 'v5';
+    $('#hud1').hidden = m !== 'v5';
+    const lab = m === 'v5' ? [['라인 L', 'I2C'], ['라인 M', 'I2C'], ['라인 R', 'I2C']] : [['라인 왼쪽', 'P13'], ['', ''], ['라인 오른쪽', 'P14']];
+    [0, 1, 2].forEach((i) => { const e = $('#stLine' + i); e.querySelector('b').textContent = lab[i][0]; e.querySelector('small').textContent = lab[i][1]; });
+    $('#stLedLabel').textContent = m === 'v5' ? 'RGB 조명 L/R' : 'LED P8/P12';
+    $('#hudModel').textContent = m === 'v5' ? '마퀸 V5' : '마퀸 V4';
+    save();
+  }
+  $('#modelSel').onchange = () => { stop(); setModel($('#modelSel').value); };
 
   // ---------- 맵 / 3D ----------
   const robot = new MQ.Robot();
@@ -345,7 +365,9 @@
 
   // ---------- 상태창 갱신 ----------
   const el = {};
-  ['stLineL', 'stLineR', 'stUs', 'stUsBar', 'stM1', 'stM2', 'stM1d', 'stM2d', 'stM1v', 'stM2v', 'stLed0', 'stLed1', 'stServo', 'stBuzz', 'stCompass', 'stIr', 'stSpeed', 'stPos', 'hudUs', 'hudL', 'hudR', 'hudTime']
+  const lineEls = [0, 1, 2].map((i) => document.getElementById('stLine' + i));
+  const hudEls = [0, 1, 2].map((i) => document.getElementById('hud' + i));
+  ['stLight', 'stBatt', 'stUs', 'stUsBar', 'stM1', 'stM2', 'stM1d', 'stM2d', 'stM1v', 'stM2v', 'stLed0', 'stLed1', 'stServo', 'stBuzz', 'stCompass', 'stIr', 'stSpeed', 'stPos', 'hudUs', 'hudTime']
     .forEach((id) => (el[id] = document.getElementById(id)));
   const rgbEls = [0, 1, 2, 3].map((i) => document.getElementById('stRgb' + i));
   let lastStatus = 0;
@@ -358,12 +380,13 @@
     }
     if (now - lastStatus < 80) return;
     lastStatus = now;
-    const L = robot.lineSensor(0), R = robot.lineSensor(1);
-    [[el.stLineL, L, 0], [el.stLineR, R, 1]].forEach(([e, v, side]) => {
-      e.classList.toggle('black', !!v);
-      e.querySelector('.ls-val').textContent = v;
+    const v5 = state.model === 'v5';
+    const sens = v5 ? [robot.lineSensor(0), robot.lineSensor(1), robot.lineSensor(2)] : [robot.lineSensor(0), 0, robot.lineSensor(1)];
+    sens.forEach((v, i) => {
+      lineEls[i].classList.toggle('black', !!v);
+      lineEls[i].querySelector('.ls-val').textContent = v;
+      hudEls[i].classList.toggle('black', !!v);
     });
-    el.hudL.classList.toggle('black', !!L); el.hudR.classList.toggle('black', !!R);
     const raw = robot.ultrasonicRaw();
     const d = raw < 0 ? null : raw;
     el.stUs.textContent = d === null ? '500' : d.toFixed(1);
@@ -378,8 +401,18 @@
       dirEl.className = 'mot-dir' + (m.speed ? (m.dir ? ' bw' : ' fw') : '');
       val.textContent = m.speed;
     });
-    el.stLed0.classList.toggle('on', hw.redLeds[0] > 0.05);
-    el.stLed1.classList.toggle('on', hw.redLeds[1] > 0.05);
+    if (v5) {
+      [el.stLed0, el.stLed1].forEach((e, i) => {
+        const [r, g, b] = hw.carLightRGB(i), on = r + g + b > 0;
+        e.classList.remove('on');
+        e.style.background = on ? `rgb(${r},${g},${b})` : '';
+        e.style.boxShadow = on ? `0 0 6px rgb(${r},${g},${b})` : '';
+      });
+      el.stLight.textContent = `${hw.lightValue(0)} / ${hw.lightValue(1)}`;
+      el.stBatt.textContent = `${hw.battery()}% · ${hw.v5.patrol ? 'ON' : 'OFF'}`;
+    } else {
+      [el.stLed0, el.stLed1].forEach((e, i) => { e.style.background = ''; e.style.boxShadow = ''; e.classList.toggle('on', hw.redLeds[i] > 0.05); });
+    }
     const kb = hw.pixelBrightness / 255;
     hw.pixels.forEach((c, i) => { rgbEls[i].style.background = `rgb(${c[0] * kb},${c[1] * kb},${c[2] * kb})`; });
     el.stServo.textContent = `${hw.servos[0]}° / ${hw.servos[1]}°`;
@@ -397,22 +430,39 @@
   const chan = new MessageChannel(); const q = [];
   chan.port1.onmessage = () => { const f = q.shift(); f && f(); };
   const tick = () => new Promise((r) => { q.push(r); chan.port2.postMessage(0); });
+  // requestAnimationFrame 이 멈추는 환경(백그라운드 탭 등)에서도 시뮬레이션 시간이 흐르도록 타이머로 보완
+  let inFrame = false, rafPending = false, lastFrameAt = performance.now();
+  function schedule() {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => { rafPending = false; frame(); });
+  }
+  setInterval(() => { if (!inFrame && performance.now() - lastFrameAt > 150) frame(); }, 100);
   async function frame() {
+    if (inFrame) return;
+    inFrame = true;
     const now = performance.now();
+    lastFrameAt = now;
     const dt = Math.min(100, now - lastT); lastT = now;
     acc += dt * state.speed;
     if (acc > 400) acc = 400;
     try {
       while (acc >= STEP) {
         acc -= STEP;
+        hw.patrolStep();
         robot.step(STEP / 1000, hw.motors);
         clock.now += STEP;
-        if (clock.release()) await tick();
+        if (clock.release()) {
+          // 깨어난 프로그램이 다음 대기(sleep)에 도달할 때까지 잠시 기다린 뒤 물리 계산을 계속 (제어 지연 방지)
+          const seq = clock.seq;
+          for (let k = 0; k < 30 && clock.seq === seq; k++) await tick();
+        }
       }
       view.update(robot, hw);
       updateStatus(now);
     } catch (e) { console.error(e); }
-    requestAnimationFrame(frame);
+    inFrame = false;
+    schedule();
   }
 
   // ---------- 시작 ----------
@@ -420,10 +470,12 @@
   buildExampleSelect();
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { saved = null; }
+  setModel('v4');
   if (saved && saved.blocks) { loadMap(saved.map || 'open'); restore(saved); }
   else { loadMap('open'); loadExample('heart'); }
-  requestAnimationFrame(frame);
+  schedule();
+  setTimeout(() => MQ.pyrt.warmup(), 300); // 파이썬 모듈 미리 컴파일
   serialAppend('Maqueen 시뮬레이터 준비 완료. 예제를 선택하거나 코딩한 뒤 ▶ 실행을 누르세요.\n', 'sys');
 
-  MQ.app = { run, stop, loadExample, loadMap, state, ws, jsEd, pyEd, robot, view, genJs, genPy };
+  MQ.app = { run, stop, loadExample, loadMap, setModel, state, ws, jsEd, pyEd, robot, view, genJs, genPy };
 })();
