@@ -72,7 +72,7 @@ vendor/             three.js, Blockly, CodeMirror, Skulpt, acorn, astring
 three.js r147 (MIT), Blockly 10 (Apache-2.0), CodeMirror 5 (MIT), Skulpt 1.2 (MIT/PSF), acorn (MIT), astring (MIT)
 
 
-## 상용 프롬프트
+## 사용 프롬프트
 - 웹기반 마이크로비트 응용 학습 시뮬레이터 구축
 - 외형 및 사양 정보 참조 사이트 : https://www.icbanq.com/P008605720?srsltid=AU7gw4XlVXdfuuEZKjLbaQ7cGFSh7iCgILA5kpObhp4U1ImNUGtzNWTB 
 - 3D 모델링을 통해 마퀸에 연결된 모든 요소들을 마이크로비트를 통해 코딩과 시뮬레이션이 가능하도록 구현. 마퀸 기본 모델 기준
