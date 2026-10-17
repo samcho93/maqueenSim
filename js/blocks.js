@@ -86,7 +86,7 @@
     row += `%${ai++}`; ledArgs.push({ type: 'input_dummy' });
     ledMsg.push(row);
   }
-  defs.push({ type: 'mb_show_leds', message0: 'LED 출력 %' + ai, args0: [{ type: 'input_dummy' }], message1: ledMsg.join(' '), args1: ledArgs, previousStatement: null, nextStatement: null, colour: C.basic });
+  defs.push({ type: 'mb_show_leds', message0: 'LED 출력 %1', args0: [{ type: 'input_dummy' }], message1: ledMsg.join(' '), args1: ledArgs, previousStatement: null, nextStatement: null, colour: C.basic });
 
   Blockly.defineBlocksWithJsonArray(defs);
   const HATS = ['mb_on_start', 'mb_forever', 'mb_on_button', 'mb_on_shake', 'mq_on_ir'];
