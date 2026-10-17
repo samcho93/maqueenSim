@@ -70,3 +70,15 @@ vendor/             three.js, Blockly, CodeMirror, Skulpt, acorn, astring
 ## 사용 라이브러리
 
 three.js r147 (MIT), Blockly 10 (Apache-2.0), CodeMirror 5 (MIT), Skulpt 1.2 (MIT/PSF), acorn (MIT), astring (MIT)
+
+
+## 상용 프롬프트
+- 웹기반 마이크로비트 응용 학습 시뮬레이터 구축
+- 외형 및 사양 정보 참조 사이트 : https://www.icbanq.com/P008605720?srsltid=AU7gw4XlVXdfuuEZKjLbaQ7cGFSh7iCgILA5kpObhp4U1ImNUGtzNWTB 
+- 3D 모델링을 통해 마퀸에 연결된 모든 요소들을 마이크로비트를 통해 코딩과 시뮬레이션이 가능하도록 구현. 마퀸 기본 모델 기준
+- 마퀸을 구동할 수 있는 다양한 공간 제공(개활지, 장애물, 격벽 공간 , 미로 등)
+- 초음파 센서를 활용한 장애물 회피, 미로 찾기 등 다양한 구동 예제 추가.
+- 라인트레이싱이 가능한 다양한 맵 제공.
+- 개별적 요소를 실습할 수 있는 기본 예제 다수 추가.
+- makecode, micropython을 사용하여 코딩.
+- 코딩 스페이스와 시뮬레이션 영역으로 구분하여 구현.
