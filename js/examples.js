@@ -254,10 +254,10 @@
         [cmp(getV('L'), '==', 1), [motor('M1', 'CW', 0), motor('M2', 'CW', 100)]],
         [cmp(getV('R'), '==', 1), [motor('M1', 'CW', 100), motor('M2', 'CW', 0)]],
         ELSE(stop(), redLed('L', true), setV('t', 0),
-          whileDo(and(and(cmp(patrol('L'), '==', 0), cmp(patrol('R'), '==', 0)), cmp(getV('t'), '<', 55)),
+          whileDo(and(and(cmp(patrol('L'), '==', 0), cmp(patrol('R'), '==', 0)), cmp(getV('t'), '<', 32)),
             motor('M1', 'CCW', 60), motor('M2', 'CW', 60), pause(20), changeV('t', 1)),
           ifs([and(cmp(patrol('L'), '==', 0), cmp(patrol('R'), '==', 0)), [redLed('L', false), redLed('R', true), setV('t', 0),
-            whileDo(and(and(cmp(patrol('L'), '==', 0), cmp(patrol('R'), '==', 0)), cmp(getV('t'), '<', 125)),
+            whileDo(and(and(cmp(patrol('L'), '==', 0), cmp(patrol('R'), '==', 0)), cmp(getV('t'), '<', 85)),
               motor('M1', 'CW', 60), motor('M2', 'CCW', 60), pause(20), changeV('t', 1))]]),
           stop())))) });
   add({ id: 'line_obstacle', group: '라인트레이싱', name: '라인트레이싱 + 장애물 정지', map: 'line_obstacle',
